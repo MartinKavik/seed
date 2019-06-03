@@ -85,6 +85,7 @@ pub mod prelude {
         },
         shortcuts::*, // appears not to work.
         vdom::{Orders, call_update},
+        util::{request_animation_frame, RequestAnimationFrameHandle, RequestAnimationFrameTime}
     };
     pub use std::collections::HashMap;
 
