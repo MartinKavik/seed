@@ -20,6 +20,7 @@ pub mod dom_types;
 pub mod events;
 pub mod fetch;
 mod next_tick;
+mod orders;
 pub mod routing;
 pub mod storage;
 mod util;
@@ -86,11 +87,12 @@ pub mod prelude {
             input_ev, keyboard_ev, mouse_ev, pointer_ev, raw_ev, simple_ev, trigger_update_handler,
             Ev,
         },
+        orders::{Orders, OrdersProxy, OrdersTrait},
         // macros are exported in crate root
         // https://github.com/rust-lang-nursery/reference/blob/master/src/macros-by-example.md
         shortcuts::*,
         util::{request_animation_frame, RequestAnimationFrameHandle, RequestAnimationFrameTime},
-        vdom::{call_update, Orders},
+        vdom::call_update,
     };
     pub use indexmap::IndexMap; // for attrs and style to work.
 
@@ -114,7 +116,7 @@ pub mod tests {
         use crate::{
             dom_types::{El, UpdateEl},
             events::mouse_ev,
-            vdom::Orders,
+            orders::Orders,
         };
 
         struct Model {

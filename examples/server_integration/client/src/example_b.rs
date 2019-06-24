@@ -32,7 +32,7 @@ pub enum Msg {
     Fetched(fetch::FetchResult<ExpectedResponseData>),
 }
 
-pub fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+pub fn update(msg: Msg, model: &mut Model, orders: &mut impl OrdersTrait<Msg>) {
     match msg {
         Msg::SendRequest => {
             orders.skip().perform_cmd(send_request());

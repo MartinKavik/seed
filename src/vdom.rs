@@ -1,6 +1,8 @@
 use crate::{
     dom_types::{self, El, ElContainer, MessageMapper, Namespace},
-    events, next_tick, routing, util, websys_bridge,
+    events, next_tick,
+    orders::Orders,
+    routing, util, websys_bridge,
 };
 use enclose::enclose;
 use futures::Future;
@@ -28,7 +30,11 @@ use web_sys::{Document, Element, Event, EventTarget, Window};
 ///   }
 ///}
 /// ```
-pub fn call_update<Ms, Mdl, GMs>(update: UpdateFn<Ms, Mdl, GMs>, msg: Ms, model: &mut Mdl) -> Orders<Ms, GMs> {
+pub fn call_update<Ms, Mdl, GMs>(
+    update: UpdateFn<Ms, Mdl, GMs>,
+    msg: Ms,
+    model: &mut Mdl,
+) -> Orders<Ms, GMs> {
     let mut orders = Orders::<Ms, GMs>::default();
     (update)(msg, model, &mut orders);
     orders
@@ -38,7 +44,7 @@ pub enum Effect<Ms, GMs> {
     Msg(Ms),
     Cmd(Box<dyn Future<Item = Ms, Error = Ms> + 'static>),
     GMsg(GMs),
-    GCmd(Box<dyn Future<Item = GMs, Error = GMs> + 'static>)
+    GCmd(Box<dyn Future<Item = GMs, Error = GMs> + 'static>),
 }
 
 impl<Ms, GMs> From<Ms> for Effect<Ms, GMs> {
@@ -64,97 +70,6 @@ pub enum ShouldRender {
     Render,
     ForceRenderNow,
     Skip,
-}
-
-pub struct Orders<Ms, GMs = ()> {
-    should_render: ShouldRender,
-    effects: VecDeque<Effect<Ms, GMs>>,
-}
-
-impl<Ms, GMs> Default for Orders<Ms, GMs> {
-    fn default() -> Self {
-        Self {
-            should_render: ShouldRender::Render,
-            effects: VecDeque::new(),
-        }
-    }
-}
-
-impl<Ms: 'static, OtherMs: 'static, GMs> MessageMapper<Ms, OtherMs> for Orders<Ms, GMs> {
-    type SelfWithOtherMs = Orders<OtherMs, GMs>;
-    fn map_message(self, f: fn(Ms) -> OtherMs) -> Orders<OtherMs, GMs> {
-        Orders {
-            should_render: self.should_render,
-            effects: self
-                .effects
-                .into_iter()
-                .map(|effect| effect.map_message(f))
-                .collect(),
-        }
-    }
-}
-
-impl<Ms: 'static, GMs> Orders<Ms, GMs> {
-    /// Schedule web page rerender after model update. It's the default behaviour.
-    pub fn render(&mut self) -> &mut Self {
-        self.should_render = ShouldRender::Render;
-        self
-    }
-
-    /// Force web page to rerender immediately after model update.
-    pub fn force_render_now(&mut self) -> &mut Self {
-        self.should_render = ShouldRender::ForceRenderNow;
-        self
-    }
-
-    /// Don't rerender web page after model update.
-    pub fn skip(&mut self) -> &mut Self {
-        self.should_render = ShouldRender::Skip;
-        self
-    }
-
-    /// Call function `update` with the given `msg` after model update.
-    /// You can call this function more times - messages will be sent in the same order.
-    pub fn send_msg(&mut self, msg: Ms) -> &mut Self {
-        self.effects.push_back(msg.into());
-        self
-    }
-
-    /// Schedule given future `cmd` to be executed after model update.
-    /// You can call this function more times - futures will be scheduled in the same order.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    ///fn write_emoticon_after_delay() -> impl Future<Item=Msg, Error=Msg> {
-    ///    TimeoutFuture::new(2_000)
-    ///        .map(|_| Msg::WriteEmoticon)
-    ///        .map_err(|_| Msg::TimeoutError)
-    ///}
-    ///orders.perform_cmd(write_emoticon_after_delay());
-    /// ```
-    pub fn perform_cmd<C>(&mut self, cmd: C) -> &mut Self
-    where
-        C: Future<Item = Ms, Error = Ms> + 'static,
-    {
-        self.effects.push_back(Effect::Cmd(Box::new(cmd)));
-        self
-    }
-
-    pub fn send_g_msg(&mut self, g_msg: GMs) -> &mut Self {
-        let effect = Effect::GMsg(g_msg);
-        self.effects.push_back(effect);
-        self
-    }
-
-    pub fn perform_g_cmd<C>(&mut self, g_cmd: C) -> &mut Self
-        where
-            C: Future<Item = GMs, Error = GMs> + 'static,
-    {
-        let effect = Effect::from(Effect::GCmd(Box::new(g_cmd)));
-        self.effects.push_back(effect);
-        self
-    }
 }
 
 type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut Orders<Ms, GMs>);
@@ -218,7 +133,7 @@ where
     window_events: Option<WindowEvents<Ms, Mdl>>,
 }
 
-pub struct App<Ms, Mdl, ElC, GMs>
+pub struct App<Ms, Mdl, ElC, GMs = ()>
 where
     Ms: 'static,
     Mdl: 'static,
@@ -230,7 +145,9 @@ where
     pub data: Rc<AppData<Ms, Mdl>>,
 }
 
-impl<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs> ::std::fmt::Debug for App<Ms, Mdl, ElC, GMs> {
+impl<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs> ::std::fmt::Debug
+    for App<Ms, Mdl, ElC, GMs>
+{
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "App")
     }
