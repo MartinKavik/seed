@@ -48,7 +48,7 @@ pub enum Msg {
     Fetched(fetch::FetchObject<()>),
 }
 
-pub fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+pub fn update(msg: Msg, model: &mut Model, orders: &mut impl OrdersTrait<Msg>) {
     match msg {
         Msg::SendRequest => {
             model.status = Status::WaitingForResponse(TimeoutStatus::Enabled);
