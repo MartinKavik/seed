@@ -31,29 +31,33 @@ use crate::{
 ///   }
 ///}
 /// ```
-pub fn call_update<Ms, Mdl>(update: UpdateFn<Ms, Mdl>, msg: Ms, model: &mut Mdl) -> Orders<Ms> {
-    let mut orders = Orders::<Ms>::default();
+pub fn call_update<Ms, Mdl, GMs>(update: UpdateFn<Ms, Mdl, GMs>, msg: Ms, model: &mut Mdl) -> Orders<Ms, GMs> {
+    let mut orders = Orders::<Ms, GMs>::default();
     (update)(msg, model, &mut orders);
     orders
 }
 
-pub enum Effect<Ms> {
+pub enum Effect<Ms, GMs> {
     Msg(Ms),
     Cmd(Box<dyn Future<Item = Ms, Error = Ms> + 'static>),
+    GMsg(GMs),
+    GCmd(Box<dyn Future<Item = GMs, Error = GMs> + 'static>)
 }
 
-impl<Ms> From<Ms> for Effect<Ms> {
+impl<Ms, GMs> From<Ms> for Effect<Ms, GMs> {
     fn from(message: Ms) -> Self {
         Effect::Msg(message)
     }
 }
 
-impl<Ms: 'static, OtherMs: 'static> MessageMapper<Ms, OtherMs> for Effect<Ms> {
-    type SelfWithOtherMs = Effect<OtherMs>;
-    fn map_message(self, f: impl FnOnce(Ms) -> OtherMs + 'static + Clone) -> Effect<OtherMs> {
+impl<Ms: 'static, OtherMs: 'static, GMs> MessageMapper<Ms, OtherMs> for Effect<Ms, GMs> {
+    type SelfWithOtherMs = Effect<OtherMs, GMs>;
+    fn map_message(self, f: impl FnOnce(Ms) -> OtherMs + 'static + Clone) -> Effect<OtherMs, GMs> {
         match self {
             Effect::Msg(msg) => Effect::Msg(f(msg)),
             Effect::Cmd(cmd) => Effect::Cmd(Box::new(cmd.map(f.clone()).map_err(f))),
+            Effect::GMsg(g_msg) => Effect::GMsg(g_msg),
+            Effect::GCmd(g_cmd) => Effect::GCmd(g_cmd),
         }
     }
 }
@@ -65,12 +69,12 @@ pub enum ShouldRender {
     Skip,
 }
 
-pub struct Orders<Ms> {
+pub struct Orders<Ms, GMs = ()> {
     should_render: ShouldRender,
-    effects: VecDeque<Effect<Ms>>,
+    effects: VecDeque<Effect<Ms, GMs>>,
 }
 
-impl<Ms> Default for Orders<Ms> {
+impl<Ms, GMs> Default for Orders<Ms, GMs> {
     fn default() -> Self {
         Self {
             should_render: ShouldRender::Render,
@@ -79,9 +83,9 @@ impl<Ms> Default for Orders<Ms> {
     }
 }
 
-impl<Ms: 'static, OtherMs: 'static> MessageMapper<Ms, OtherMs> for Orders<Ms> {
-    type SelfWithOtherMs = Orders<OtherMs>;
-    fn map_message(self, f: impl FnOnce(Ms) -> OtherMs + 'static + Clone) -> Orders<OtherMs> {
+impl<Ms: 'static, OtherMs: 'static, GMs> MessageMapper<Ms, OtherMs> for Orders<Ms, GMs> {
+    type SelfWithOtherMs = Orders<OtherMs, GMs>;
+    fn map_message(self, f: impl FnOnce(Ms) -> OtherMs + 'static + Clone) -> Orders<OtherMs, GMs> {
         Orders {
             should_render: self.should_render,
             effects: self
@@ -93,7 +97,7 @@ impl<Ms: 'static, OtherMs: 'static> MessageMapper<Ms, OtherMs> for Orders<Ms> {
     }
 }
 
-impl<Ms: 'static> Orders<Ms> {
+impl<Ms: 'static, GMs> Orders<Ms, GMs> {
     /// Schedule web page rerender after model update. It's the default behaviour.
     pub fn render(&mut self) -> &mut Self {
         self.should_render = ShouldRender::Render;
@@ -139,9 +143,25 @@ impl<Ms: 'static> Orders<Ms> {
         self.effects.push_back(Effect::Cmd(Box::new(cmd)));
         self
     }
+
+    pub fn send_g_msg(&mut self, g_msg: GMs) -> &mut Self {
+        let effect = Effect::GMsg(g_msg);
+        self.effects.push_back(effect);
+        self
+    }
+
+    pub fn perform_g_cmd<C>(&mut self, g_cmd: C) -> &mut Self
+        where
+            C: Future<Item = GMs, Error = GMs> + 'static,
+    {
+        let effect = Effect::from(Effect::GCmd(Box::new(g_cmd)));
+        self.effects.push_back(effect);
+        self
+    }
 }
 
-type UpdateFn<Ms, Mdl> = fn(Ms, &mut Mdl, &mut Orders<Ms>);
+type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut Orders<Ms, GMs>);
+type GMsgHandlerFn<Ms, Mdl, GMs> = fn(GMs, &mut Mdl, &mut Orders<Ms, GMs>);
 type ViewFn<Mdl, ElC> = fn(&Mdl) -> ElC;
 type RoutesFn<Ms> = fn(routing::Url) -> Ms;
 type WindowEvents<Ms, Mdl> = fn(&Mdl) -> Vec<events::Listener<Ms>>;
@@ -187,7 +207,7 @@ pub struct AppData<Ms: 'static, Mdl> {
     scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
 }
 
-pub struct AppCfg<Ms, Mdl, ElC>
+pub struct AppCfg<Ms, Mdl, ElC, GMs>
 where
     Ms: 'static,
     Mdl: 'static,
@@ -195,24 +215,25 @@ where
 {
     document: web_sys::Document,
     mount_point: web_sys::Element,
-    pub update: UpdateFn<Ms, Mdl>,
+    pub update: UpdateFn<Ms, Mdl, GMs>,
+    pub g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
     view: ViewFn<Mdl, ElC>,
     window_events: Option<WindowEvents<Ms, Mdl>>,
 }
 
-pub struct App<Ms, Mdl, ElC>
+pub struct App<Ms, Mdl, ElC, GMs>
 where
     Ms: 'static,
     Mdl: 'static,
     ElC: View<Ms>,
 {
     /// Stateless app configuration
-    pub cfg: Rc<AppCfg<Ms, Mdl, ElC>>,
+    pub cfg: Rc<AppCfg<Ms, Mdl, ElC, GMs>>,
     /// Mutable app state
     pub data: Rc<AppData<Ms, Mdl>>,
 }
 
-impl<Ms: 'static, Mdl: 'static, ElC: View<Ms>> ::std::fmt::Debug for App<Ms, Mdl, ElC> {
+impl<Ms: 'static, Mdl: 'static, ElC: View<Ms>, GMs> ::std::fmt::Debug for App<Ms, Mdl, ElC, GMs> {
     fn fmt(&self, f: &mut ::std::fmt::Formatter) -> ::std::fmt::Result {
         write!(f, "App")
     }
@@ -248,16 +269,17 @@ impl MountPoint for web_sys::HtmlElement {
 
 /// Used to create and store initial app configuration, ie items passed by the app creator
 #[derive(Clone)]
-pub struct AppBuilder<Ms: 'static, Mdl: 'static, ElC: View<Ms>> {
+pub struct AppBuilder<Ms: 'static, Mdl: 'static, ElC: View<Ms>, GMs> {
     model: Mdl,
-    update: UpdateFn<Ms, Mdl>,
+    update: UpdateFn<Ms, Mdl, GMs>,
+    g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
     view: ViewFn<Mdl, ElC>,
     mount_point: Option<Element>,
     routes: Option<RoutesFn<Ms>>,
     window_events: Option<WindowEvents<Ms, Mdl>>,
 }
 
-impl<Ms, Mdl, ElC: View<Ms> + 'static> AppBuilder<Ms, Mdl, ElC> {
+impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, ElC, GMs> {
     /// Choose the element where the application will be mounted.
     /// The default one is the element with `id` = "app".
     ///
@@ -296,13 +318,19 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> AppBuilder<Ms, Mdl, ElC> {
         self
     }
 
-    pub fn finish(mut self) -> App<Ms, Mdl, ElC> {
+    pub fn g_msg_handler(mut self, g_msg_handler: GMsgHandlerFn<Ms, Mdl, GMs>) -> Self {
+        self.g_msg_handler = Some(g_msg_handler);
+        self
+    }
+
+    pub fn finish(mut self) -> App<Ms, Mdl, ElC, GMs> {
         if self.mount_point.is_none() {
             self = self.mount("app")
         }
         App::new(
             self.model,
             self.update,
+            self.g_msg_handler,
             self.view,
             self.mount_point.unwrap(),
             self.routes,
@@ -313,12 +341,12 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> AppBuilder<Ms, Mdl, ElC> {
 
 /// We use a struct instead of series of functions, in order to avoid passing
 /// repetitive sequences of parameters.
-impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
+impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
     pub fn build(
         model: Mdl,
-        update: UpdateFn<Ms, Mdl>,
+        update: UpdateFn<Ms, Mdl, GMs>,
         view: ViewFn<Mdl, ElC>,
-    ) -> AppBuilder<Ms, Mdl, ElC> {
+    ) -> AppBuilder<Ms, Mdl, ElC, GMs> {
         // Allows panic messages to output to the browser console.error.
         console_error_panic_hook::set_once();
 
@@ -326,6 +354,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
             model,
             update,
             view,
+            g_msg_handler: None,
             mount_point: None,
             routes: None,
             window_events: None,
@@ -334,7 +363,8 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
 
     fn new(
         model: Mdl,
-        update: UpdateFn<Ms, Mdl>,
+        update: UpdateFn<Ms, Mdl, GMs>,
+        g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
         view: ViewFn<Mdl, ElC>,
         mount_point: Element,
         routes: Option<RoutesFn<Ms>>,
@@ -348,6 +378,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
                 document,
                 mount_point,
                 update,
+                g_msg_handler,
                 view,
                 window_events,
             }),
@@ -443,7 +474,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
     /// If you have no access to the [`App`](struct.App.html) instance you can use
     /// alternatively the [`seed::update`](fn.update.html) function.
     pub fn update(&self, message: Ms) {
-        let mut msg_and_cmd_queue: VecDeque<Effect<Ms>> = VecDeque::new();
+        let mut msg_and_cmd_queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
         msg_and_cmd_queue.push_front(message.into());
 
         while let Some(effect) = msg_and_cmd_queue.pop_front() {
@@ -452,18 +483,63 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
                     let mut new_effects = self.process_queue_message(msg);
                     msg_and_cmd_queue.append(&mut new_effects);
                 }
+                Effect::GMsg(g_msg) => {
+                    let mut new_effects = self.process_queue_global_message(g_msg);
+                    msg_and_cmd_queue.append(&mut new_effects);
+                }
                 Effect::Cmd(cmd) => self.process_queue_cmd(cmd),
+                Effect::GCmd(g_cmd) => self.process_queue_global_cmd(g_cmd),
             }
         }
     }
 
-    fn process_queue_message(&self, message: Ms) -> VecDeque<Effect<Ms>> {
+    pub fn g_msg_handler(&self, g_msg: GMs) {
+        let mut msg_and_cmd_queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
+        msg_and_cmd_queue.push_front(Effect::GMsg(g_msg));
+
+        while let Some(effect) = msg_and_cmd_queue.pop_front() {
+            match effect {
+                Effect::Msg(msg) => {
+                    let mut new_effects = self.process_queue_message(msg);
+                    msg_and_cmd_queue.append(&mut new_effects);
+                }
+                Effect::GMsg(g_msg) => {
+                    let mut new_effects = self.process_queue_global_message(g_msg);
+                    msg_and_cmd_queue.append(&mut new_effects);
+                }
+                Effect::Cmd(cmd) => self.process_queue_cmd(cmd),
+                Effect::GCmd(g_cmd) => self.process_queue_global_cmd(g_cmd),
+            }
+        }
+    }
+
+    fn process_queue_message(&self, message: Ms) -> VecDeque<Effect<Ms, GMs>> {
         for l in self.data.msg_listeners.borrow().iter() {
             (l)(&message)
         }
 
         let mut orders = Orders::default();
         (self.cfg.update)(message, &mut self.data.model.borrow_mut(), &mut orders);
+
+        self.setup_window_listeners();
+
+        match orders.should_render {
+            ShouldRender::Render => self.schedule_render(),
+            ShouldRender::ForceRenderNow => {
+                self.cancel_scheduled_render();
+                self.rerender_vdom();
+            }
+            ShouldRender::Skip => (),
+        };
+        orders.effects
+    }
+
+    fn process_queue_global_message(&self, g_message: GMs) -> VecDeque<Effect<Ms, GMs>> {
+        let mut orders = Orders::default();
+
+        if let Some(g_msg_handler) = self.cfg.g_msg_handler {
+            g_msg_handler(g_message, &mut self.data.model.borrow_mut(), &mut orders);
+        }
 
         self.setup_window_listeners();
 
@@ -485,6 +561,20 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
                 let msg_returned_from_effect = res.unwrap_or_else(|err_msg| err_msg);
                 // recursive call which can blow the call stack
                 s.update(msg_returned_from_effect);
+                Ok(())
+            }))
+        });
+        // we need to clear the call stack by NextTick so we don't exceed it's capacity
+        spawn_local(NextTick::new().map(lazy_schedule_cmd));
+    }
+
+    fn process_queue_global_cmd(&self, g_cmd: Box<dyn Future<Item = GMs, Error = GMs>>) {
+        let lazy_schedule_cmd = enclose!((self => s) move |_| {
+            // schedule future (g_cmd) to be executed
+            spawn_local(g_cmd.then(move |res| {
+                let msg_returned_from_effect = res.unwrap_or_else(|err_msg| err_msg);
+                // recursive call which can blow the call stack
+                s.g_msg_handler(msg_returned_from_effect);
                 Ok(())
             }))
         });
@@ -626,7 +716,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static> App<Ms, Mdl, ElC> {
     }
 }
 
-impl<Ms, Mdl, ElC: View<Ms>> Clone for App<Ms, Mdl, ElC> {
+impl<Ms, Mdl, ElC: View<Ms>, GMs> Clone for App<Ms, Mdl, ElC, GMs> {
     fn clone(&self) -> Self {
         Self {
             cfg: Rc::clone(&self.cfg),
