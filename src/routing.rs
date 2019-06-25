@@ -127,10 +127,7 @@ fn get_search() -> String {
 
 /// For setting up landing page routing. Unlike normal routing, we can't rely
 /// on the popstate state, so must go off path, hash, and search directly.
-pub fn initial<Ms>(update: impl Fn(Ms), routes: fn(Url) -> Ms)
-where
-    Ms: 'static,
-{
+pub fn initial_url() -> Url {
     let raw_path = get_path();
     let path_ref: Vec<&str> = raw_path.split('/').collect();
     let path: Vec<String> = path_ref.into_iter().map(ToString::to_string).collect();
@@ -147,14 +144,12 @@ where
         _ => Some(raw_search),
     };
 
-    let url = Url {
+    Url {
         path,
         hash,
         search,
         title: None,
-    };
-
-    update(routes(url));
+    }
 }
 
 fn remove_first(s: &str) -> Option<&str> {

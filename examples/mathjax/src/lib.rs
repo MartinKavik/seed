@@ -184,7 +184,11 @@ e^{-\mathbf{A}} = \mathbf{B} + [\mathbf{A}, \mathbf{B}]"
 
 #[wasm_bindgen(start)]
 pub fn render() {
-    seed::App::build(Model::default(), |_, _, _: &mut Orders<Msg>| (), view)
-        .finish()
-        .run();
+    seed::App::build(
+        |_, _| Model::default(),
+        |_, _, _: &mut Orders<Msg>| (),
+        view,
+    )
+    .finish()
+    .run();
 }

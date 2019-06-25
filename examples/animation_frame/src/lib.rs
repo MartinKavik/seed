@@ -58,7 +58,6 @@ struct Model {
 
 #[derive(Clone, Copy, Serialize, Deserialize)]
 enum Msg {
-    Init,
     SetViewportWidth,
     NextAnimationStep,
     OnAnimationFrame(RequestAnimationFrameTime),
@@ -66,12 +65,6 @@ enum Msg {
 
 fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
     match msg {
-        Msg::Init => {
-            orders
-                .send_msg(Msg::SetViewportWidth)
-                .send_msg(Msg::NextAnimationStep)
-                .skip();
-        }
         Msg::SetViewportWidth => {
             model.viewport_width = f64::from(seed::body().client_width());
             orders.skip();
@@ -175,9 +168,18 @@ fn view_wheel(wheel_x: f64, car: &Car) -> Node<Msg> {
     }]
 }
 
+// Init
+
+fn init(_: Url, orders: &mut Orders<Msg>) -> Model {
+    orders
+        .send_msg(Msg::SetViewportWidth)
+        .send_msg(Msg::NextAnimationStep);
+    Model::default()
+}
+
 #[wasm_bindgen(start)]
 pub fn render() {
-    let app = seed::App::build(Model::default(), update, view)
+    seed::App::build(init, update, view)
         .window_events(|_| {
             vec![
                 // we want to use `seed::update(...)`
@@ -187,6 +189,4 @@ pub fn render() {
         })
         .finish()
         .run();
-
-    app.update(Msg::Init);
 }
