@@ -58,7 +58,6 @@ impl Default for Model {
 
 #[derive(Clone)]
 enum Msg {
-    FetchRepositoryInfo,
     RepositoryInfoFetched(fetch::ResponseDataResult<Branch>),
     SendMessage,
     MessageSent(fetch::ResponseDataResult<SendMessageResponseBody>),
@@ -70,10 +69,6 @@ enum Msg {
 
 fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
     match msg {
-        Msg::FetchRepositoryInfo => {
-            orders.skip().perform_cmd(fetch_repository_info());
-        }
-
         Msg::RepositoryInfoFetched(Ok(branch)) => model.branch = branch,
 
         Msg::RepositoryInfoFetched(Err(fail_reason)) => {
@@ -140,11 +135,14 @@ fn view(model: &Model) -> Vec<El<Msg>> {
     ]
 }
 
+// Init
+
+fn init(_: Url, orders: &mut Orders<Msg>) -> Model {
+    orders.perform_cmd(fetch_repository_info());
+    Model::default()
+}
+
 #[wasm_bindgen]
 pub fn render() {
-    let app = seed::App::build(Model::default(), update, view)
-        .finish()
-        .run();
-
-    app.update(Msg::FetchRepositoryInfo);
+    seed::App::build(init, update, view).finish().run();
 }

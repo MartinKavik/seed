@@ -88,6 +88,7 @@ pub mod prelude {
             Ev,
         },
         orders::{Orders, OrdersProxy, OrdersTrait},
+        routing::Url,
         // macros are exported in crate root
         // https://github.com/rust-lang-nursery/reference/blob/master/src/macros-by-example.md
         shortcuts::*,
@@ -154,7 +155,7 @@ pub mod tests {
 
         #[wasm_bindgen]
         pub fn render() {
-            seed::App::build(Model::default(), update, view)
+            seed::App::build(|_, _| Model::default(), update, view)
                 .mount("body")
                 .routes(routes)
                 .window_events(window_events)

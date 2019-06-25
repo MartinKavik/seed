@@ -182,7 +182,7 @@ fn view(model: &Model) -> El<Msg> {
 
 #[wasm_bindgen]
 pub fn render() {
-    seed::App::build(Model::default(), update, view)
+    seed::App::build(|_,_| Model::default(), update, view)
         .finish()
         .run();
 }

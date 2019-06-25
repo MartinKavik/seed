@@ -8,7 +8,7 @@ use enclose::enclose;
 use futures::Future;
 use next_tick::NextTick;
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{vec_deque::VecDeque, HashMap},
     rc::Rc,
 };
@@ -72,6 +72,7 @@ pub enum ShouldRender {
     Skip,
 }
 
+type InitFn<Ms, Mdl, GMs> = Box<FnOnce(routing::Url, &mut Orders<Ms, GMs>) -> Mdl>;
 type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut Orders<Ms, GMs>);
 type GMsgHandlerFn<Ms, Mdl, GMs> = fn(GMs, &mut Mdl, &mut Orders<Ms, GMs>);
 type ViewFn<Mdl, ElC> = fn(&Mdl) -> ElC;
@@ -108,7 +109,7 @@ impl<Ms> Clone for Mailbox<Ms> {
 type StoredPopstate = RefCell<Option<Closure<FnMut(Event)>>>;
 
 /// Used as part of an interior-mutability pattern, ie Rc<RefCell<>>
-pub struct AppData<Ms: 'static, Mdl> {
+pub struct AppData<Ms: 'static, Mdl, GMs> {
     // Model is in a RefCell here so we can modify it in self.update().
     pub model: RefCell<Mdl>,
     main_el_vdom: RefCell<Option<El<Ms>>>,
@@ -117,6 +118,7 @@ pub struct AppData<Ms: 'static, Mdl> {
     window_listeners: RefCell<Vec<events::Listener<Ms>>>,
     msg_listeners: RefCell<MsgListeners<Ms>>,
     scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
+    initial_orders: Cell<Orders<Ms, GMs>>,
 }
 
 pub struct AppCfg<Ms, Mdl, ElC, GMs>
@@ -142,7 +144,7 @@ where
     /// Stateless app configuration
     pub cfg: Rc<AppCfg<Ms, Mdl, ElC, GMs>>,
     /// Mutable app state
-    pub data: Rc<AppData<Ms, Mdl>>,
+    pub data: Rc<AppData<Ms, Mdl, GMs>>,
 }
 
 impl<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs> ::std::fmt::Debug
@@ -182,9 +184,8 @@ impl MountPoint for web_sys::HtmlElement {
 }
 
 /// Used to create and store initial app configuration, ie items passed by the app creator
-#[derive(Clone)]
 pub struct AppBuilder<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs> {
-    model: Mdl,
+    init: InitFn<Ms, Mdl, GMs>,
     update: UpdateFn<Ms, Mdl, GMs>,
     g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
     view: ViewFn<Mdl, ElC>,
@@ -241,14 +242,19 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, 
         if self.mount_point.is_none() {
             self = self.mount("app")
         }
+
+        let mut initial_orders = Orders::default();
+        let model = (self.init)(routing::initial_url(), &mut initial_orders);
+
         App::new(
-            self.model,
+            model,
             self.update,
             self.g_msg_handler,
             self.view,
             self.mount_point.unwrap(),
             self.routes,
             self.window_events,
+            initial_orders,
         )
     }
 }
@@ -257,7 +263,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, 
 /// repetitive sequences of parameters.
 impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
     pub fn build(
-        model: Mdl,
+        init: impl FnOnce(routing::Url, &mut Orders<Ms, GMs>) -> Mdl + 'static,
         update: UpdateFn<Ms, Mdl, GMs>,
         view: ViewFn<Mdl, ElC>,
     ) -> AppBuilder<Ms, Mdl, ElC, GMs> {
@@ -265,7 +271,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
         console_error_panic_hook::set_once();
 
         AppBuilder {
-            model,
+            init: Box::new(init),
             update,
             view,
             g_msg_handler: None,
@@ -275,6 +281,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn new(
         model: Mdl,
         update: UpdateFn<Ms, Mdl, GMs>,
@@ -283,6 +290,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
         mount_point: Element,
         routes: Option<RoutesFn<Ms>>,
         window_events: Option<WindowEvents<Ms, Mdl>>,
+        initial_orders: Orders<Ms, GMs>,
     ) -> Self {
         let window = util::window();
         let document = window.document().expect("Can't find the window's document");
@@ -305,6 +313,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
                 window_listeners: RefCell::new(Vec::new()),
                 msg_listeners: RefCell::new(Vec::new()),
                 scheduled_render_handle: RefCell::new(None),
+                initial_orders: Cell::new(initial_orders),
             }),
         }
     }
@@ -325,6 +334,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
     /// App initialization: Collect its fundamental components, setup, and perform
     /// an initial render.
     pub fn run(self) -> Self {
+        self.process_cmd_and_msg_queue(self.data.initial_orders.take().effects);
         // Our initial render. Can't initialize in new due to mailbox() requiring self.
         // "new" name is for consistency with `update` function.
         let mut new = El::empty(dom_types::Tag::Section);
@@ -347,7 +357,6 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
         // Update the state on page load, based
         // on the starting URL. Must be set up on the server as well.
         if let Some(routes) = *self.data.routes.borrow() {
-            routing::initial(|msg| self.update(msg), routes);
             routing::setup_popstate_listener(
                 enclose!((self => s) move |msg| s.update(msg)),
                 enclose!((self => s) move |closure| {
@@ -375,38 +384,27 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
     /// If you have no access to the [`App`](struct.App.html) instance you can use
     /// alternatively the [`seed::update`](fn.update.html) function.
     pub fn update(&self, message: Ms) {
-        let mut msg_and_cmd_queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
-        msg_and_cmd_queue.push_front(message.into());
-
-        while let Some(effect) = msg_and_cmd_queue.pop_front() {
-            match effect {
-                Effect::Msg(msg) => {
-                    let mut new_effects = self.process_queue_message(msg);
-                    msg_and_cmd_queue.append(&mut new_effects);
-                }
-                Effect::GMsg(g_msg) => {
-                    let mut new_effects = self.process_queue_global_message(g_msg);
-                    msg_and_cmd_queue.append(&mut new_effects);
-                }
-                Effect::Cmd(cmd) => self.process_queue_cmd(cmd),
-                Effect::GCmd(g_cmd) => self.process_queue_global_cmd(g_cmd),
-            }
-        }
+        let mut queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
+        queue.push_front(message.into());
+        self.process_cmd_and_msg_queue(queue);
     }
 
     pub fn g_msg_handler(&self, g_msg: GMs) {
-        let mut msg_and_cmd_queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
-        msg_and_cmd_queue.push_front(Effect::GMsg(g_msg));
+        let mut queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
+        queue.push_front(Effect::GMsg(g_msg));
+        self.process_cmd_and_msg_queue(queue);
+    }
 
-        while let Some(effect) = msg_and_cmd_queue.pop_front() {
+    pub fn process_cmd_and_msg_queue(&self, mut queue: VecDeque<Effect<Ms, GMs>>) {
+        while let Some(effect) = queue.pop_front() {
             match effect {
                 Effect::Msg(msg) => {
                     let mut new_effects = self.process_queue_message(msg);
-                    msg_and_cmd_queue.append(&mut new_effects);
+                    queue.append(&mut new_effects);
                 }
                 Effect::GMsg(g_msg) => {
                     let mut new_effects = self.process_queue_global_message(g_msg);
-                    msg_and_cmd_queue.append(&mut new_effects);
+                    queue.append(&mut new_effects);
                 }
                 Effect::Cmd(cmd) => self.process_queue_cmd(cmd),
                 Effect::GCmd(g_cmd) => self.process_queue_global_cmd(g_cmd),
@@ -1032,7 +1030,7 @@ pub mod tests {
     struct Model {}
 
     fn create_app() -> App<Msg, Model, El<Msg>> {
-        App::build(Model {}, |_, _, _| (), |_| seed::empty())
+        App::build(|_,_| Model {}, |_, _, _| (), |_| seed::empty())
             // mount to the element that exists even in the default test html
             .mount(util::body())
             .finish()
@@ -1584,7 +1582,7 @@ pub mod tests {
         }
 
         let app = App::build(
-            Model {
+            |_, _| Model {
                 test_value_sender: Some(test_value_sender),
                 ..Default::default()
             },
