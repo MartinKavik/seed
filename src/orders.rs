@@ -2,11 +2,19 @@ use crate::dom_types::MessageMapper;
 use crate::vdom::{Effect, ShouldRender};
 use futures::Future;
 use std::collections::VecDeque;
+use std::rc::Rc;
 
 // ------ OrdersTrait ------
 
 #[allow(clippy::module_name_repetitions)]
 pub trait OrdersTrait<Ms, GMs = ()> {
+    type RootMs: 'static;
+
+    fn proxy<ChildMs: 'static>(
+        &mut self,
+        f: impl Fn(ChildMs) -> Ms + 'static,
+    ) -> OrdersProxy<ChildMs, Self::RootMs, GMs>;
+
     fn render(&mut self) -> &mut Self;
 
     fn force_render_now(&mut self) -> &mut Self;
@@ -42,15 +50,6 @@ impl<Ms, GMs> Default for Orders<Ms, GMs> {
     }
 }
 
-impl<Ms: 'static, GMs> Orders<Ms, GMs> {
-    pub fn proxy<ChildMs: 'static>(
-        &mut self,
-        f: fn(ChildMs) -> Ms,
-    ) -> OrdersProxy<ChildMs, Ms, GMs> {
-        OrdersProxy::new(self, f)
-    }
-}
-
 impl<Ms: 'static, OtherMs: 'static, GMs> MessageMapper<Ms, OtherMs> for Orders<Ms, GMs> {
     type SelfWithOtherMs = Orders<OtherMs, GMs>;
     fn map_message(self, f: fn(Ms) -> OtherMs) -> Orders<OtherMs, GMs> {
@@ -65,7 +64,16 @@ impl<Ms: 'static, OtherMs: 'static, GMs> MessageMapper<Ms, OtherMs> for Orders<M
     }
 }
 
-impl<Ms, GMs> OrdersTrait<Ms, GMs> for Orders<Ms, GMs> {
+impl<Ms: 'static, GMs> OrdersTrait<Ms, GMs> for Orders<Ms, GMs> {
+    type RootMs = Ms;
+
+    fn proxy<ChildMs: 'static>(
+        &mut self,
+        f: impl Fn(ChildMs) -> Ms + 'static,
+    ) -> OrdersProxy<ChildMs, Ms, GMs> {
+        OrdersProxy::new(self, f)
+    }
+
     /// Schedule web page rerender after model update. It's the default behaviour.
     fn render(&mut self) -> &mut Self {
         self.should_render = ShouldRender::Render;
@@ -132,20 +140,36 @@ impl<Ms, GMs> OrdersTrait<Ms, GMs> for Orders<Ms, GMs> {
 // ------ OrdersProxy ------
 
 #[allow(clippy::module_name_repetitions)]
-pub struct OrdersProxy<'a, Ms, ParentMs: 'static, GMs: 'static = ()> {
-    orders: &'a mut Orders<ParentMs, GMs>,
-    f: fn(Ms) -> ParentMs,
+pub struct OrdersProxy<'a, Ms, RootMs: 'static, GMs: 'static = ()> {
+    orders: &'a mut Orders<RootMs, GMs>,
+    f: Rc<Fn(Ms) -> RootMs>,
 }
 
-impl<'a, Ms: 'static, ParentMs: 'static, GMs> OrdersProxy<'a, Ms, ParentMs, GMs> {
-    pub fn new(orders: &'a mut Orders<ParentMs, GMs>, f: fn(Ms) -> ParentMs) -> Self {
-        OrdersProxy { orders, f }
+impl<'a, Ms: 'static, RootMs: 'static, GMs> OrdersProxy<'a, Ms, RootMs, GMs> {
+    pub fn new(orders: &'a mut Orders<RootMs, GMs>, f: impl Fn(Ms) -> RootMs + 'static) -> Self {
+        OrdersProxy {
+            orders,
+            f: Rc::new(f),
+        }
     }
 }
 
-impl<'a, Ms: 'static, ParentMs: 'static, GMs> OrdersTrait<Ms, GMs>
-    for OrdersProxy<'a, Ms, ParentMs, GMs>
+impl<'a, Ms: 'static, RootMs: 'static, GMs> OrdersTrait<Ms, GMs>
+    for OrdersProxy<'a, Ms, RootMs, GMs>
 {
+    type RootMs = RootMs;
+
+    fn proxy<ChildMs: 'static>(
+        &mut self,
+        f: impl Fn(ChildMs) -> Ms + 'static,
+    ) -> OrdersProxy<ChildMs, RootMs, GMs> {
+        let previous_f = self.f.clone();
+        OrdersProxy {
+            orders: self.orders,
+            f: Rc::new(move |child_ms| previous_f(f(child_ms))),
+        }
+    }
+
     fn render(&mut self) -> &mut Self {
         self.orders.render();
         self
@@ -165,10 +189,12 @@ impl<'a, Ms: 'static, ParentMs: 'static, GMs> OrdersTrait<Ms, GMs>
 
     /// Call function `update` with the given `msg` after model update.
     /// You can call this function more times - messages will be sent in the same order.
+    #[allow(clippy::redundant_closure)]
     fn send_msg(&mut self, msg: Ms) -> &mut Self {
+        let f = self.f.clone();
         self.orders
             .effects
-            .push_back(Effect::Msg(msg).map_message(self.f));
+            .push_back(Effect::Msg(msg).map_message_with_fn_once(move |ms| f(ms)));
         self
     }
 
@@ -185,11 +211,13 @@ impl<'a, Ms: 'static, ParentMs: 'static, GMs> OrdersTrait<Ms, GMs>
     ///}
     ///orders.perform_cmd(write_emoticon_after_delay());
     /// ```
+    #[allow(clippy::redundant_closure)]
     fn perform_cmd<C>(&mut self, cmd: C) -> &mut Self
     where
         C: Future<Item = Ms, Error = Ms> + 'static,
     {
-        let effect = Effect::Cmd(Box::new(cmd)).map_message(self.f);
+        let f = self.f.clone();
+        let effect = Effect::Cmd(Box::new(cmd)).map_message_with_fn_once(move |ms| f(ms));
         self.orders.effects.push_back(effect);
         self
     }
