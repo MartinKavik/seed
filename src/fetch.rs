@@ -75,6 +75,8 @@ impl<T: Debug> FetchObject<T> {
 // ---------- Fails ----------
 
 #[derive(Debug, Clone)]
+// @TODO use https://github.com/rust-lang-nursery/failure?
+// @TODO include fetch_object + response + data (if possible)?
 pub enum FailReason {
     RequestError(RequestError),
     Status(Status),

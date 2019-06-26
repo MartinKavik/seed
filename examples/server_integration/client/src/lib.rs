@@ -33,7 +33,7 @@ enum Msg {
     ExampleE(example_e::Msg),
 }
 
-fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, orders: &mut impl OrdersTrait<Msg>) {
     match msg {
         Msg::ExampleA(msg) => {
             example_a::update(msg, &mut model.example_a, &mut orders.proxy(Msg::ExampleA));
