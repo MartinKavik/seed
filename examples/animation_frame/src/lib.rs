@@ -63,7 +63,7 @@ enum Msg {
     OnAnimationFrame(RequestAnimationFrameTime),
 }
 
-fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::SetViewportWidth => {
             model.viewport_width = f64::from(seed::body().client_width());
@@ -170,7 +170,7 @@ fn view_wheel(wheel_x: f64, car: &Car) -> Node<Msg> {
 
 // Init
 
-fn init(_: Url, orders: &mut Orders<Msg>) -> Model {
+fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders
         .send_msg(Msg::SetViewportWidth)
         .send_msg(Msg::NextAnimationStep);

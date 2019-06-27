@@ -28,7 +28,7 @@ enum Msg {
     TimeoutError,
 }
 
-fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::Greet => {
             model.greet_clicked = true;

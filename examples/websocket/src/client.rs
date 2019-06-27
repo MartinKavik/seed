@@ -30,7 +30,7 @@ enum Msg {
     EditChange(String),
 }
 
-fn update(msg: Msg, mut model: &mut Model, orders: &mut Orders<Msg>) {
+fn update(msg: Msg, mut model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::Connected => {
             model.connected = true;
