@@ -2,7 +2,6 @@
 extern crate seed;
 use rand::prelude::*;
 use seed::prelude::*;
-use serde::{Deserialize, Serialize};
 
 // Model
 
@@ -56,22 +55,25 @@ struct Model {
 
 // Update
 
-#[derive(Clone, Copy, Serialize, Deserialize)]
+#[derive(Clone, Copy)]
 enum Msg {
     SetViewportWidth,
     NextAnimationStep,
     OnAnimationFrame(RequestAnimationFrameTime),
 }
 
-fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
+// we need to set associated types `AppMs` and `ElC` because Rust can't resolve it automatically
+// (it fails on `app.update(..)` without it)
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg, AppMs = Msg, ElC = El<Msg>>) {
     match msg {
         Msg::SetViewportWidth => {
             model.viewport_width = f64::from(seed::body().client_width());
             orders.skip();
         }
         Msg::NextAnimationStep => {
-            let cb = Closure::wrap(Box::new(|time| {
-                seed::update(Msg::OnAnimationFrame(time));
+            let app = orders.clone_app();
+            let cb = Closure::wrap(Box::new(move |time| {
+                app.update(Msg::OnAnimationFrame(time));
             }) as Box<FnMut(RequestAnimationFrameTime)>);
 
             model.request_animation_frame_handle = Some(request_animation_frame(cb));
@@ -180,13 +182,7 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
 #[wasm_bindgen]
 pub fn render() {
     seed::App::build(init, update, view)
-        .window_events(|_| {
-            vec![
-                // we want to use `seed::update(...)`
-                trigger_update_handler(),
-                simple_ev(Ev::Resize, Msg::SetViewportWidth),
-            ]
-        })
+        .window_events(|_| vec![simple_ev(Ev::Resize, Msg::SetViewportWidth)])
         .finish()
         .run();
 }

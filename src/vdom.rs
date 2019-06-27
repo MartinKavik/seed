@@ -8,7 +8,7 @@ use enclose::enclose;
 use futures::Future;
 use next_tick::NextTick;
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     collections::{vec_deque::VecDeque, HashMap},
     rc::Rc,
 };
@@ -62,9 +62,10 @@ pub enum ShouldRender {
     Skip,
 }
 
-type InitFn<Ms, Mdl, GMs> = Box<FnOnce(routing::Url, &mut OrdersContainer<Ms, GMs>) -> Mdl>;
-type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, GMs>);
-type GMsgHandlerFn<Ms, Mdl, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, GMs>);
+type InitFn<Ms, Mdl, ElC, GMs> =
+    Box<FnOnce(routing::Url, &mut OrdersContainer<Ms, Mdl, ElC, GMs>) -> Mdl>;
+type UpdateFn<Ms, Mdl, ElC, GMs> = fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, ElC, GMs>);
+type GMsgHandlerFn<Ms, Mdl, ElC, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, ElC, GMs>);
 type ViewFn<Mdl, ElC> = fn(&Mdl) -> ElC;
 type RoutesFn<Ms> = fn(routing::Url) -> Ms;
 type WindowEvents<Ms, Mdl> = fn(&Mdl) -> Vec<events::Listener<Ms>>;
@@ -99,16 +100,15 @@ impl<Ms> Clone for Mailbox<Ms> {
 type StoredPopstate = RefCell<Option<Closure<FnMut(Event)>>>;
 
 /// Used as part of an interior-mutability pattern, ie Rc<RefCell<>>
-pub struct AppData<Ms: 'static, Mdl, GMs> {
+pub struct AppData<Ms: 'static, Mdl> {
     // Model is in a RefCell here so we can modify it in self.update().
-    pub model: RefCell<Mdl>,
+    pub model: RefCell<Option<Mdl>>,
     main_el_vdom: RefCell<Option<El<Ms>>>,
     pub popstate_closure: StoredPopstate,
     pub routes: RefCell<Option<RoutesFn<Ms>>>,
     window_listeners: RefCell<Vec<events::Listener<Ms>>>,
     msg_listeners: RefCell<MsgListeners<Ms>>,
     scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
-    initial_orders: Cell<OrdersContainer<Ms, GMs>>,
 }
 
 pub struct AppCfg<Ms, Mdl, ElC, GMs>
@@ -119,10 +119,11 @@ where
 {
     document: web_sys::Document,
     mount_point: web_sys::Element,
-    pub update: UpdateFn<Ms, Mdl, GMs>,
-    pub g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
+    pub update: UpdateFn<Ms, Mdl, ElC, GMs>,
+    pub g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, ElC, GMs>>,
     view: ViewFn<Mdl, ElC>,
     window_events: Option<WindowEvents<Ms, Mdl>>,
+    initial_orders: RefCell<Option<OrdersContainer<Ms, Mdl, ElC, GMs>>>,
 }
 
 pub struct App<Ms, Mdl, ElC, GMs = ()>
@@ -134,7 +135,7 @@ where
     /// Stateless app configuration
     pub cfg: Rc<AppCfg<Ms, Mdl, ElC, GMs>>,
     /// Mutable app state
-    pub data: Rc<AppData<Ms, Mdl, GMs>>,
+    pub data: Rc<AppData<Ms, Mdl>>,
 }
 
 impl<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs> ::std::fmt::Debug
@@ -175,9 +176,9 @@ impl MountPoint for web_sys::HtmlElement {
 
 /// Used to create and store initial app configuration, ie items passed by the app creator
 pub struct AppBuilder<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs> {
-    init: InitFn<Ms, Mdl, GMs>,
-    update: UpdateFn<Ms, Mdl, GMs>,
-    g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
+    init: InitFn<Ms, Mdl, ElC, GMs>,
+    update: UpdateFn<Ms, Mdl, ElC, GMs>,
+    g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, ElC, GMs>>,
     view: ViewFn<Mdl, ElC>,
     mount_point: Option<Element>,
     routes: Option<RoutesFn<Ms>>,
@@ -223,7 +224,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, 
         self
     }
 
-    pub fn g_msg_handler(mut self, g_msg_handler: GMsgHandlerFn<Ms, Mdl, GMs>) -> Self {
+    pub fn g_msg_handler(mut self, g_msg_handler: GMsgHandlerFn<Ms, Mdl, ElC, GMs>) -> Self {
         self.g_msg_handler = Some(g_msg_handler);
         self
     }
@@ -233,19 +234,22 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, 
             self = self.mount("app")
         }
 
-        let mut initial_orders = OrdersContainer::default();
-        let model = (self.init)(routing::initial_url(), &mut initial_orders);
-
-        App::new(
-            model,
+        let app = App::new(
             self.update,
             self.g_msg_handler,
             self.view,
             self.mount_point.unwrap(),
             self.routes,
             self.window_events,
-            initial_orders,
-        )
+        );
+
+        let mut initial_orders = OrdersContainer::new(app.clone());
+        let model = (self.init)(routing::initial_url(), &mut initial_orders);
+
+        app.cfg.initial_orders.replace(Some(initial_orders));
+        app.data.model.replace(Some(model));
+
+        app
     }
 }
 
@@ -253,8 +257,8 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, 
 /// repetitive sequences of parameters.
 impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
     pub fn build(
-        init: impl FnOnce(routing::Url, &mut OrdersContainer<Ms, GMs>) -> Mdl + 'static,
-        update: UpdateFn<Ms, Mdl, GMs>,
+        init: impl FnOnce(routing::Url, &mut OrdersContainer<Ms, Mdl, ElC, GMs>) -> Mdl + 'static,
+        update: UpdateFn<Ms, Mdl, ElC, GMs>,
         view: ViewFn<Mdl, ElC>,
     ) -> AppBuilder<Ms, Mdl, ElC, GMs> {
         // Allows panic messages to output to the browser console.error.
@@ -273,14 +277,12 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
 
     #[allow(clippy::too_many_arguments)]
     fn new(
-        model: Mdl,
-        update: UpdateFn<Ms, Mdl, GMs>,
-        g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
+        update: UpdateFn<Ms, Mdl, ElC, GMs>,
+        g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, ElC, GMs>>,
         view: ViewFn<Mdl, ElC>,
         mount_point: Element,
         routes: Option<RoutesFn<Ms>>,
         window_events: Option<WindowEvents<Ms, Mdl>>,
-        initial_orders: OrdersContainer<Ms, GMs>,
     ) -> Self {
         let window = util::window();
         let document = window.document().expect("Can't find the window's document");
@@ -293,9 +295,10 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
                 g_msg_handler,
                 view,
                 window_events,
+                initial_orders: RefCell::new(None),
             }),
             data: Rc::new(AppData {
-                model: RefCell::new(model),
+                model: RefCell::new(None),
                 // This is filled for the first time in run()
                 main_el_vdom: RefCell::new(None),
                 popstate_closure: RefCell::new(None),
@@ -303,14 +306,13 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
                 window_listeners: RefCell::new(Vec::new()),
                 msg_listeners: RefCell::new(Vec::new()),
                 scheduled_render_handle: RefCell::new(None),
-                initial_orders: Cell::new(initial_orders),
             }),
         }
     }
 
     pub fn setup_window_listeners(&self) {
         if let Some(window_events) = self.cfg.window_events {
-            let mut new_listeners = (window_events)(&self.data.model.borrow());
+            let mut new_listeners = (window_events)(self.data.model.borrow().as_ref().unwrap());
             setup_window_listeners(
                 &util::window(),
                 &mut self.data.window_listeners.borrow_mut(),
@@ -324,11 +326,17 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
     /// App initialization: Collect its fundamental components, setup, and perform
     /// an initial render.
     pub fn run(self) -> Self {
-        self.process_cmd_and_msg_queue(self.data.initial_orders.take().effects);
+        self.process_cmd_and_msg_queue(
+            self.cfg
+                .initial_orders
+                .replace(None)
+                .expect("initial_orders should be set in AppBuilder::finish")
+                .effects,
+        );
         // Our initial render. Can't initialize in new due to mailbox() requiring self.
         // "new" name is for consistency with `update` function.
         let mut new = El::empty(dom_types::Tag::Section);
-        new.children = (self.cfg.view)(&self.data.model.borrow()).els();
+        new.children = (self.cfg.view)(self.data.model.borrow().as_ref().unwrap()).els();
 
         self.setup_window_listeners();
 
@@ -407,8 +415,12 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
             (l)(&message)
         }
 
-        let mut orders = OrdersContainer::default();
-        (self.cfg.update)(message, &mut self.data.model.borrow_mut(), &mut orders);
+        let mut orders = OrdersContainer::new(self.clone());
+        (self.cfg.update)(
+            message,
+            &mut self.data.model.borrow_mut().as_mut().unwrap(),
+            &mut orders,
+        );
 
         self.setup_window_listeners();
 
@@ -424,10 +436,14 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
     }
 
     fn process_queue_global_message(&self, g_message: GMs) -> VecDeque<Effect<Ms, GMs>> {
-        let mut orders = OrdersContainer::default();
+        let mut orders = OrdersContainer::new(self.clone());
 
         if let Some(g_msg_handler) = self.cfg.g_msg_handler {
-            g_msg_handler(g_message, &mut self.data.model.borrow_mut(), &mut orders);
+            g_msg_handler(
+                g_message,
+                &mut self.data.model.borrow_mut().as_mut().unwrap(),
+                &mut orders,
+            );
         }
 
         self.setup_window_listeners();
@@ -494,7 +510,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
         // Create a new vdom: The top element, and all its children. Does not yet
         // have associated web_sys elements.
         let mut new = El::empty(dom_types::Tag::Section);
-        new.children = (self.cfg.view)(&self.data.model.borrow()).els();
+        new.children = (self.cfg.view)(self.data.model.borrow().as_ref().unwrap()).els();
 
         let mut old = self
             .data
