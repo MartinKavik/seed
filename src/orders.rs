@@ -8,19 +8,46 @@ use std::rc::Rc;
 pub trait Orders<Ms, GMs = ()> {
     type RootMs: 'static;
 
+    /// Automatically map message type. It allows you to pass `Orders` into child module.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    ///Msg::Child(child_msg) => {
+    ///    child::update(child_msg, &mut model.child, &mut orders.proxy(Msg::Child));
+    ///}
+    /// ```
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl Fn(ChildMs) -> Ms + 'static,
     ) -> OrdersProxy<ChildMs, Self::RootMs, GMs>;
 
+    /// Schedule web page rerender after model update. It's the default behaviour.
     fn render(&mut self) -> &mut Self;
 
+    /// Force web page to rerender immediately after model update.
     fn force_render_now(&mut self) -> &mut Self;
 
+    /// Don't rerender web page after model update.
     fn skip(&mut self) -> &mut Self;
 
+    /// Call function `update` with the given `msg` after model update.
+    /// You can call this function more times - messages will be sent in the same order.
     fn send_msg(&mut self, msg: Ms) -> &mut Self;
 
+    /// Schedule given future `cmd` to be executed after model update.
+    /// You can call this function more times - futures will be scheduled in the same order.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    ///fn write_emoticon_after_delay() -> impl Future<Item=Msg, Error=Msg> {
+    ///    TimeoutFuture::new(2_000)
+    ///        .map(|_| Msg::WriteEmoticon)
+    ///        .map_err(|_| Msg::TimeoutError)
+    ///}
+    ///orders.perform_cmd(write_emoticon_after_delay());
+    /// ```
     fn perform_cmd<C>(&mut self, cmd: C) -> &mut Self
     where
         C: Future<Item = Ms, Error = Ms> + 'static;
@@ -59,44 +86,26 @@ impl<Ms: 'static, GMs> Orders<Ms, GMs> for OrdersContainer<Ms, GMs> {
         OrdersProxy::new(self, f)
     }
 
-    /// Schedule web page rerender after model update. It's the default behaviour.
     fn render(&mut self) -> &mut Self {
         self.should_render = ShouldRender::Render;
         self
     }
 
-    /// Force web page to rerender immediately after model update.
     fn force_render_now(&mut self) -> &mut Self {
         self.should_render = ShouldRender::ForceRenderNow;
         self
     }
 
-    /// Don't rerender web page after model update.
     fn skip(&mut self) -> &mut Self {
         self.should_render = ShouldRender::Skip;
         self
     }
 
-    /// Call function `update` with the given `msg` after model update.
-    /// You can call this function more times - messages will be sent in the same order.
     fn send_msg(&mut self, msg: Ms) -> &mut Self {
         self.effects.push_back(msg.into());
         self
     }
 
-    /// Schedule given future `cmd` to be executed after model update.
-    /// You can call this function more times - futures will be scheduled in the same order.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    ///fn write_emoticon_after_delay() -> impl Future<Item=Msg, Error=Msg> {
-    ///    TimeoutFuture::new(2_000)
-    ///        .map(|_| Msg::WriteEmoticon)
-    ///        .map_err(|_| Msg::TimeoutError)
-    ///}
-    ///orders.perform_cmd(write_emoticon_after_delay());
-    /// ```
     fn perform_cmd<C>(&mut self, cmd: C) -> &mut Self
     where
         C: Future<Item = Ms, Error = Ms> + 'static,
@@ -161,20 +170,16 @@ impl<'a, Ms: 'static, RootMs: 'static, GMs> Orders<Ms, GMs> for OrdersProxy<'a, 
         self
     }
 
-    /// Force web page to rerender immediately after model update.
     fn force_render_now(&mut self) -> &mut Self {
         self.orders_container.force_render_now();
         self
     }
 
-    /// Don't rerender web page after model update.
     fn skip(&mut self) -> &mut Self {
         self.orders_container.skip();
         self
     }
 
-    /// Call function `update` with the given `msg` after model update.
-    /// You can call this function more times - messages will be sent in the same order.
     #[allow(clippy::redundant_closure)]
     fn send_msg(&mut self, msg: Ms) -> &mut Self {
         let f = self.f.clone();
@@ -184,19 +189,6 @@ impl<'a, Ms: 'static, RootMs: 'static, GMs> Orders<Ms, GMs> for OrdersProxy<'a, 
         self
     }
 
-    /// Schedule given future `cmd` to be executed after model update.
-    /// You can call this function more times - futures will be scheduled in the same order.
-    ///
-    /// # Example
-    ///
-    /// ```rust,no_run
-    ///fn write_emoticon_after_delay() -> impl Future<Item=Msg, Error=Msg> {
-    ///    TimeoutFuture::new(2_000)
-    ///        .map(|_| Msg::WriteEmoticon)
-    ///        .map_err(|_| Msg::TimeoutError)
-    ///}
-    ///orders.perform_cmd(write_emoticon_after_delay());
-    /// ```
     #[allow(clippy::redundant_closure)]
     fn perform_cmd<C>(&mut self, cmd: C) -> &mut Self
     where
