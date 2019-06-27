@@ -42,7 +42,7 @@ pub enum Msg {
     Fetched(fetch::ResponseDataResult<String>),
 }
 
-pub fn update(msg: Msg, model: &mut Model, orders: &mut impl OrdersTrait<Msg>) {
+pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::SendRequest => {
             model.status = Status::WaitingForResponse;

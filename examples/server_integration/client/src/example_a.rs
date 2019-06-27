@@ -30,7 +30,7 @@ pub enum Msg {
     Fetched(fetch::ResponseDataResult<shared::SendMessageResponseBody>),
 }
 
-pub fn update(msg: Msg, model: &mut Model, orders: &mut impl OrdersTrait<Msg>) {
+pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::NewMessageChanged(message) => {
             model.new_message = message;

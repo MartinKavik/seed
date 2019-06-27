@@ -20,7 +20,7 @@ pub mod dom_types;
 pub mod events;
 pub mod fetch;
 mod next_tick;
-mod orders;
+pub mod orders;
 pub mod routing;
 pub mod storage;
 mod util;
@@ -87,13 +87,12 @@ pub mod prelude {
             input_ev, keyboard_ev, mouse_ev, pointer_ev, raw_ev, simple_ev, trigger_update_handler,
             Ev,
         },
-        orders::{Orders, OrdersProxy, OrdersTrait},
+        orders::Orders,
         routing::Url,
         // macros are exported in crate root
         // https://github.com/rust-lang-nursery/reference/blob/master/src/macros-by-example.md
         shortcuts::*,
         util::{request_animation_frame, RequestAnimationFrameHandle, RequestAnimationFrameTime},
-        vdom::call_update,
     };
     pub use indexmap::IndexMap; // for attrs and style to work.
 
@@ -135,7 +134,7 @@ pub mod tests {
             Increment,
         }
 
-        fn update(msg: Msg, model: &mut Model, _: &mut Orders<Msg>) {
+        fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
             match msg {
                 Msg::Increment => model.val += 1,
             }

@@ -27,7 +27,7 @@ enum Msg {
     Tick(String),
 }
 
-fn update(msg: Msg, model: &mut Model, _: &mut Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
     match msg {
         Msg::ClockEnabled => log!("Clock enabled"),
         Msg::Tick(time) => model.time_from_js = Some(time),

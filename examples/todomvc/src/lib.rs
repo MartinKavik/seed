@@ -132,7 +132,7 @@ fn edit_submit(posit: usize, model: &mut Model) {
     }
 }
 
-fn update(msg: Msg, model: &mut Model, _: &mut Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
     model.sync_storage(); // Doing it here will miss the most recent update...
 
     // todo has some bugs.

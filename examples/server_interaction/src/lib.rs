@@ -67,7 +67,7 @@ enum Msg {
     },
 }
 
-fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::RepositoryInfoFetched(Ok(branch)) => model.branch = branch,
 
@@ -137,7 +137,7 @@ fn view(model: &Model) -> Vec<El<Msg>> {
 
 // Init
 
-fn init(_: Url, orders: &mut Orders<Msg>) -> Model {
+fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
     orders.perform_cmd(fetch_repository_info());
     Model::default()
 }

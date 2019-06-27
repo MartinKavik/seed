@@ -122,7 +122,7 @@ enum Msg {
 }
 
 /// How we update the model
-fn update(msg: Msg, model: &mut Model, _orders: &mut Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, _orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::Increment => model.count += 1,
         Msg::Decrement => model.count -= 1,

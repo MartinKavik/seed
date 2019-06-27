@@ -1,7 +1,7 @@
 use crate::{
     dom_types::{self, El, ElContainer, MessageMapper, Namespace},
     events, next_tick,
-    orders::Orders,
+    orders::OrdersContainer,
     routing, util, websys_bridge,
 };
 use enclose::enclose;
@@ -15,30 +15,6 @@ use std::{
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{Document, Element, Event, EventTarget, Window};
-
-/// Function `call_update` is useful for calling submodules' `update`.
-///
-/// # Example
-///
-/// ```rust,no_run
-///fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
-///    match msg {
-///        Msg::ExampleA(msg) => {
-///            *orders = call_update(example_a::update, msg, &mut model.example_a)
-///                .map_message(Msg::ExampleA);
-///        }
-///   }
-///}
-/// ```
-pub fn call_update<Ms, Mdl, GMs>(
-    update: UpdateFn<Ms, Mdl, GMs>,
-    msg: Ms,
-    model: &mut Mdl,
-) -> Orders<Ms, GMs> {
-    let mut orders = Orders::<Ms, GMs>::default();
-    (update)(msg, model, &mut orders);
-    orders
-}
 
 pub enum Effect<Ms, GMs> {
     Msg(Ms),
@@ -86,9 +62,9 @@ pub enum ShouldRender {
     Skip,
 }
 
-type InitFn<Ms, Mdl, GMs> = Box<FnOnce(routing::Url, &mut Orders<Ms, GMs>) -> Mdl>;
-type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut Orders<Ms, GMs>);
-type GMsgHandlerFn<Ms, Mdl, GMs> = fn(GMs, &mut Mdl, &mut Orders<Ms, GMs>);
+type InitFn<Ms, Mdl, GMs> = Box<FnOnce(routing::Url, &mut OrdersContainer<Ms, GMs>) -> Mdl>;
+type UpdateFn<Ms, Mdl, GMs> = fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, GMs>);
+type GMsgHandlerFn<Ms, Mdl, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, GMs>);
 type ViewFn<Mdl, ElC> = fn(&Mdl) -> ElC;
 type RoutesFn<Ms> = fn(routing::Url) -> Ms;
 type WindowEvents<Ms, Mdl> = fn(&Mdl) -> Vec<events::Listener<Ms>>;
@@ -132,7 +108,7 @@ pub struct AppData<Ms: 'static, Mdl, GMs> {
     window_listeners: RefCell<Vec<events::Listener<Ms>>>,
     msg_listeners: RefCell<MsgListeners<Ms>>,
     scheduled_render_handle: RefCell<Option<util::RequestAnimationFrameHandle>>,
-    initial_orders: Cell<Orders<Ms, GMs>>,
+    initial_orders: Cell<OrdersContainer<Ms, GMs>>,
 }
 
 pub struct AppCfg<Ms, Mdl, ElC, GMs>
@@ -257,7 +233,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, 
             self = self.mount("app")
         }
 
-        let mut initial_orders = Orders::default();
+        let mut initial_orders = OrdersContainer::default();
         let model = (self.init)(routing::initial_url(), &mut initial_orders);
 
         App::new(
@@ -277,7 +253,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, 
 /// repetitive sequences of parameters.
 impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
     pub fn build(
-        init: impl FnOnce(routing::Url, &mut Orders<Ms, GMs>) -> Mdl + 'static,
+        init: impl FnOnce(routing::Url, &mut OrdersContainer<Ms, GMs>) -> Mdl + 'static,
         update: UpdateFn<Ms, Mdl, GMs>,
         view: ViewFn<Mdl, ElC>,
     ) -> AppBuilder<Ms, Mdl, ElC, GMs> {
@@ -304,7 +280,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
         mount_point: Element,
         routes: Option<RoutesFn<Ms>>,
         window_events: Option<WindowEvents<Ms, Mdl>>,
-        initial_orders: Orders<Ms, GMs>,
+        initial_orders: OrdersContainer<Ms, GMs>,
     ) -> Self {
         let window = util::window();
         let document = window.document().expect("Can't find the window's document");
@@ -431,7 +407,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
             (l)(&message)
         }
 
-        let mut orders = Orders::default();
+        let mut orders = OrdersContainer::default();
         (self.cfg.update)(message, &mut self.data.model.borrow_mut(), &mut orders);
 
         self.setup_window_listeners();
@@ -448,7 +424,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GM
     }
 
     fn process_queue_global_message(&self, g_message: GMs) -> VecDeque<Effect<Ms, GMs>> {
-        let mut orders = Orders::default();
+        let mut orders = OrdersContainer::default();
 
         if let Some(g_msg_handler) = self.cfg.g_msg_handler {
             g_msg_handler(g_message, &mut self.data.model.borrow_mut(), &mut orders);
@@ -1565,7 +1541,7 @@ pub mod tests {
             Start,
         }
 
-        fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+        fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             orders.skip();
 
             match msg {
