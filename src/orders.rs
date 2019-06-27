@@ -1,12 +1,15 @@
-use crate::vdom::{Effect, ShouldRender};
+use crate::dom_types::ElContainer;
+use crate::vdom::{App, Effect, ShouldRender};
 use futures::Future;
 use std::collections::VecDeque;
 use std::rc::Rc;
 
 // ------ Orders ------
 
-pub trait Orders<Ms, GMs = ()> {
-    type RootMs: 'static;
+pub trait Orders<Ms: 'static, GMs = ()> {
+    type AppMs: 'static;
+    type Mdl: 'static;
+    type ElC: ElContainer<Self::AppMs>;
 
     /// Automatically map message type. It allows you to pass `Orders` into child module.
     ///
@@ -20,7 +23,7 @@ pub trait Orders<Ms, GMs = ()> {
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl Fn(ChildMs) -> Ms + 'static,
-    ) -> OrdersProxy<ChildMs, Self::RootMs, GMs>;
+    ) -> OrdersProxy<ChildMs, Self::AppMs, Self::Mdl, Self::ElC, GMs>;
 
     /// Schedule web page rerender after model update. It's the default behaviour.
     fn render(&mut self) -> &mut Self;
@@ -36,6 +39,7 @@ pub trait Orders<Ms, GMs = ()> {
     fn send_msg(&mut self, msg: Ms) -> &mut Self;
 
     /// Schedule given future `cmd` to be executed after model update.
+    /// Result is send to function `update`.
     /// You can call this function more times - futures will be scheduled in the same order.
     ///
     /// # Example
@@ -52,37 +56,49 @@ pub trait Orders<Ms, GMs = ()> {
     where
         C: Future<Item = Ms, Error = Ms> + 'static;
 
+    /// Similar to `send_msg`, but calls function `g_msg_handler` with the given global message.
     fn send_g_msg(&mut self, g_msg: GMs) -> &mut Self;
 
+    /// Similar to `perform_cmd`, but result is send to function `g_msg_handler`.
     fn perform_g_cmd<C>(&mut self, g_cmd: C) -> &mut Self
     where
         C: Future<Item = GMs, Error = GMs> + 'static;
+
+    /// Get app instance. Cloning is cheap because `App` contains only `Rc` fields.
+    /// See example `src/example/animation_frame/src/lib.rs`.
+    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::ElC, GMs>;
 }
 
 // ------ OrdersContainer ------
 
 #[allow(clippy::module_name_repetitions)]
-pub struct OrdersContainer<Ms, GMs = ()> {
+pub struct OrdersContainer<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs = ()> {
     pub(crate) should_render: ShouldRender,
     pub(crate) effects: VecDeque<Effect<Ms, GMs>>,
+    app: App<Ms, Mdl, ElC, GMs>,
 }
 
-impl<Ms, GMs> Default for OrdersContainer<Ms, GMs> {
-    fn default() -> Self {
+impl<Ms, Mdl, ElC: ElContainer<Ms>, GMs> OrdersContainer<Ms, Mdl, ElC, GMs> {
+    pub fn new(app: App<Ms, Mdl, ElC, GMs>) -> Self {
         Self {
             should_render: ShouldRender::Render,
             effects: VecDeque::new(),
+            app,
         }
     }
 }
 
-impl<Ms: 'static, GMs> Orders<Ms, GMs> for OrdersContainer<Ms, GMs> {
-    type RootMs = Ms;
+impl<Ms: 'static, Mdl, ElC: ElContainer<Ms>, GMs> Orders<Ms, GMs>
+    for OrdersContainer<Ms, Mdl, ElC, GMs>
+{
+    type AppMs = Ms;
+    type Mdl = Mdl;
+    type ElC = ElC;
 
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl Fn(ChildMs) -> Ms + 'static,
-    ) -> OrdersProxy<ChildMs, Ms, GMs> {
+    ) -> OrdersProxy<ChildMs, Ms, Mdl, ElC, GMs> {
         OrdersProxy::new(self, f)
     }
 
@@ -129,20 +145,33 @@ impl<Ms: 'static, GMs> Orders<Ms, GMs> for OrdersContainer<Ms, GMs> {
         self.effects.push_back(effect);
         self
     }
+
+    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::ElC, GMs> {
+        self.app.clone()
+    }
 }
 
 // ------ OrdersProxy ------
 
 #[allow(clippy::module_name_repetitions)]
-pub struct OrdersProxy<'a, Ms, RootMs: 'static, GMs: 'static = ()> {
-    orders_container: &'a mut OrdersContainer<RootMs, GMs>,
-    f: Rc<Fn(Ms) -> RootMs>,
+pub struct OrdersProxy<
+    'a,
+    Ms,
+    AppMs: 'static,
+    Mdl: 'static,
+    ElC: ElContainer<AppMs>,
+    GMs: 'static = (),
+> {
+    orders_container: &'a mut OrdersContainer<AppMs, Mdl, ElC, GMs>,
+    f: Rc<Fn(Ms) -> AppMs>,
 }
 
-impl<'a, Ms: 'static, RootMs: 'static, GMs> OrdersProxy<'a, Ms, RootMs, GMs> {
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs>, GMs>
+    OrdersProxy<'a, Ms, AppMs, Mdl, ElC, GMs>
+{
     pub fn new(
-        orders_container: &'a mut OrdersContainer<RootMs, GMs>,
-        f: impl Fn(Ms) -> RootMs + 'static,
+        orders_container: &'a mut OrdersContainer<AppMs, Mdl, ElC, GMs>,
+        f: impl Fn(Ms) -> AppMs + 'static,
     ) -> Self {
         OrdersProxy {
             orders_container,
@@ -151,13 +180,17 @@ impl<'a, Ms: 'static, RootMs: 'static, GMs> OrdersProxy<'a, Ms, RootMs, GMs> {
     }
 }
 
-impl<'a, Ms: 'static, RootMs: 'static, GMs> Orders<Ms, GMs> for OrdersProxy<'a, Ms, RootMs, GMs> {
-    type RootMs = RootMs;
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs>, GMs> Orders<Ms, GMs>
+    for OrdersProxy<'a, Ms, AppMs, Mdl, ElC, GMs>
+{
+    type AppMs = AppMs;
+    type Mdl = Mdl;
+    type ElC = ElC;
 
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl Fn(ChildMs) -> Ms + 'static,
-    ) -> OrdersProxy<ChildMs, RootMs, GMs> {
+    ) -> OrdersProxy<ChildMs, AppMs, Mdl, ElC, GMs> {
         let previous_f = self.f.clone();
         OrdersProxy {
             orders_container: self.orders_container,
@@ -213,5 +246,9 @@ impl<'a, Ms: 'static, RootMs: 'static, GMs> Orders<Ms, GMs> for OrdersProxy<'a, 
         let effect = Effect::GCmd(Box::new(g_cmd));
         self.orders_container.effects.push_back(effect);
         self
+    }
+
+    fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::ElC, GMs> {
+        self.orders_container.clone_app()
     }
 }
