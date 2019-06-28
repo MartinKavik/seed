@@ -299,6 +299,7 @@ pub struct Request {
 impl Request {
     // ------ PUBLIC ------
 
+    // @TODO: impl ToString?
     pub fn new(url: String) -> Self {
         Self {
             url,
@@ -556,7 +557,7 @@ impl Request {
         f: impl FnOnce(FetchObject<T>) -> U,
     ) -> impl Future<Item = U, Error = U>
     where
-        T: DeserializeOwned + Debug + 'static,
+        T: DeserializeOwned + Debug + 'static, //@TODO remove Debug(s)?
         U: 'static,
     {
         // @TODO: once await/async stabilized, refactor

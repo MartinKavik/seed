@@ -1,15 +1,14 @@
 use crate::dom_types::ElContainer;
 use crate::vdom::{App, Effect, ShouldRender};
 use futures::Future;
-use std::collections::VecDeque;
-use std::rc::Rc;
+use std::{collections::VecDeque, convert::identity, rc::Rc};
 
 // ------ Orders ------
 
 pub trait Orders<Ms: 'static, GMs = ()> {
     type AppMs: 'static;
     type Mdl: 'static;
-    type ElC: ElContainer<Self::AppMs>;
+    type ElC: ElContainer<Self::AppMs> + 'static;
 
     /// Automatically map message type. It allows you to pass `Orders` into child module.
     ///
@@ -65,8 +64,17 @@ pub trait Orders<Ms: 'static, GMs = ()> {
         C: Future<Item = GMs, Error = GMs> + 'static;
 
     /// Get app instance. Cloning is cheap because `App` contains only `Rc` fields.
-    /// See example `src/example/animation_frame/src/lib.rs`.
     fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::ElC, GMs>;
+
+    /// Get function which maps module's `Msg` to app's (root's) one.
+    ///
+    /// # Example
+    ///
+    /// ```rust,no_run
+    ///let (app, msg_mapper) = (orders.clone_app(), orders.msg_mapper());
+    ///app.update(msg_mapper(Msg::AMessage));
+    /// ```
+    fn msg_mapper(&self) -> Box<Fn(Ms) -> Self::AppMs>;
 }
 
 // ------ OrdersContainer ------
@@ -88,7 +96,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms>, GMs> OrdersContainer<Ms, Mdl, ElC, GMs> {
     }
 }
 
-impl<Ms: 'static, Mdl, ElC: ElContainer<Ms>, GMs> Orders<Ms, GMs>
+impl<Ms: 'static, Mdl, ElC: ElContainer<Ms> + 'static, GMs> Orders<Ms, GMs>
     for OrdersContainer<Ms, Mdl, ElC, GMs>
 {
     type AppMs = Ms;
@@ -149,6 +157,10 @@ impl<Ms: 'static, Mdl, ElC: ElContainer<Ms>, GMs> Orders<Ms, GMs>
     fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::ElC, GMs> {
         self.app.clone()
     }
+
+    fn msg_mapper(&self) -> Box<Fn(Ms) -> Self::AppMs> {
+        Box::new(identity)
+    }
 }
 
 // ------ OrdersProxy ------
@@ -180,7 +192,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs>, GMs>
     }
 }
 
-impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs>, GMs> Orders<Ms, GMs>
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs> + 'static, GMs> Orders<Ms, GMs>
     for OrdersProxy<'a, Ms, AppMs, Mdl, ElC, GMs>
 {
     type AppMs = AppMs;
@@ -250,5 +262,11 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs>, GMs> Orders<
 
     fn clone_app(&self) -> App<Self::AppMs, Self::Mdl, Self::ElC, GMs> {
         self.orders_container.clone_app()
+    }
+
+    fn msg_mapper(&self) -> Box<Fn(Ms) -> Self::AppMs> {
+        let f = self.f.clone();
+        #[allow(clippy::redundant_closure)]
+        Box::new(move |ms| f(ms))
     }
 }
