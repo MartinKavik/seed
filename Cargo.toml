@@ -91,6 +91,9 @@ members = [
     "examples/update_from_js",
     "examples/websocket",
     "examples/window_events",
+    "examples/immutable",
+    "examples/immutable_2",
+    "examples/immutable_3",
 ]
 
 exclude = [
