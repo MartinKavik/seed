@@ -1,4 +1,4 @@
-use crate::dom_types::ElContainer;
+use crate::dom_types::View;
 use crate::vdom::{App, Effect, ShouldRender};
 use futures::Future;
 use std::{collections::VecDeque, convert::identity, rc::Rc};
@@ -8,7 +8,7 @@ use std::{collections::VecDeque, convert::identity, rc::Rc};
 pub trait Orders<Ms: 'static, GMs = ()> {
     type AppMs: 'static;
     type Mdl: 'static;
-    type ElC: ElContainer<Self::AppMs> + 'static;
+    type ElC: View<Self::AppMs> + 'static;
 
     /// Automatically map message type. It allows you to pass `Orders` into child module.
     ///
@@ -80,13 +80,13 @@ pub trait Orders<Ms: 'static, GMs = ()> {
 // ------ OrdersContainer ------
 
 #[allow(clippy::module_name_repetitions)]
-pub struct OrdersContainer<Ms: 'static, Mdl: 'static, ElC: ElContainer<Ms>, GMs = ()> {
+pub struct OrdersContainer<Ms: 'static, Mdl: 'static, ElC: View<Ms>, GMs = ()> {
     pub(crate) should_render: ShouldRender,
     pub(crate) effects: VecDeque<Effect<Ms, GMs>>,
     app: App<Ms, Mdl, ElC, GMs>,
 }
 
-impl<Ms, Mdl, ElC: ElContainer<Ms>, GMs> OrdersContainer<Ms, Mdl, ElC, GMs> {
+impl<Ms, Mdl, ElC: View<Ms>, GMs> OrdersContainer<Ms, Mdl, ElC, GMs> {
     pub fn new(app: App<Ms, Mdl, ElC, GMs>) -> Self {
         Self {
             should_render: ShouldRender::Render,
@@ -96,7 +96,7 @@ impl<Ms, Mdl, ElC: ElContainer<Ms>, GMs> OrdersContainer<Ms, Mdl, ElC, GMs> {
     }
 }
 
-impl<Ms: 'static, Mdl, ElC: ElContainer<Ms> + 'static, GMs> Orders<Ms, GMs>
+impl<Ms: 'static, Mdl, ElC: View<Ms> + 'static, GMs> Orders<Ms, GMs>
     for OrdersContainer<Ms, Mdl, ElC, GMs>
 {
     type AppMs = Ms;
@@ -166,19 +166,12 @@ impl<Ms: 'static, Mdl, ElC: ElContainer<Ms> + 'static, GMs> Orders<Ms, GMs>
 // ------ OrdersProxy ------
 
 #[allow(clippy::module_name_repetitions)]
-pub struct OrdersProxy<
-    'a,
-    Ms,
-    AppMs: 'static,
-    Mdl: 'static,
-    ElC: ElContainer<AppMs>,
-    GMs: 'static = (),
-> {
+pub struct OrdersProxy<'a, Ms, AppMs: 'static, Mdl: 'static, ElC: View<AppMs>, GMs: 'static = ()> {
     orders_container: &'a mut OrdersContainer<AppMs, Mdl, ElC, GMs>,
     f: Rc<Fn(Ms) -> AppMs>,
 }
 
-impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs>, GMs>
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs>, GMs>
     OrdersProxy<'a, Ms, AppMs, Mdl, ElC, GMs>
 {
     pub fn new(
@@ -192,7 +185,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs>, GMs>
     }
 }
 
-impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: ElContainer<AppMs> + 'static, GMs> Orders<Ms, GMs>
+impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orders<Ms, GMs>
     for OrdersProxy<'a, Ms, AppMs, Mdl, ElC, GMs>
 {
     type AppMs = AppMs;

@@ -14,7 +14,9 @@ use next_tick::NextTick;
 
 use crate::{
     dom_types::{self, El, MessageMapper, Namespace, Node, View},
-    events, next_tick, patch, routing, util, websys_bridge,
+    events, next_tick,
+    orders::OrdersContainer,
+    patch, routing, util, websys_bridge,
 };
 
 pub enum Effect<Ms, GMs> {
@@ -174,11 +176,10 @@ impl MountPoint for web_sys::HtmlElement {
 }
 
 /// Used to create and store initial app configuration, ie items passed by the app creator
-#[derive(Clone)]
 pub struct AppBuilder<Ms: 'static, Mdl: 'static, ElC: View<Ms>, GMs> {
-    init: InitFn<Ms, Mdl, GMs>,
-    update: UpdateFn<Ms, Mdl, GMs>,
-    g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, GMs>>,
+    init: InitFn<Ms, Mdl, ElC, GMs>,
+    update: UpdateFn<Ms, Mdl, ElC, GMs>,
+    g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, ElC, GMs>>,
     view: ViewFn<Mdl, ElC>,
     mount_point: Option<Element>,
     routes: Option<RoutesFn<Ms>>,
