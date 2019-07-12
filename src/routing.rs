@@ -262,21 +262,25 @@ where
                 _ => Some(href_el)
             })
             .and_then(|href_el| href_el.get_attribute("href"))
-            .and_then(|href| {
-                href.chars().next()
-                    .map(|first_char| (href, first_char))
-            })
-            // The first character being / indicates a rel link, which is what
+            // The first character being / or empty href indicates a rel link, which is what
             // we're intercepting.
-            // todo: Handle other cases that imply a relative link.
-            // todo: I think not having anything, eg no http/www implies
-            // todo rel link as well.
-            .and_then(|(href, first_char)| if first_char == '/' { Some(href) } else { None })
+            // @TODO: Resolve it properly, see Elm implementation:
+            // @TODO: https://github.com/elm/browser/blob/9f52d88b424dd12cab391195d5b090dd4639c3b0/src/Elm/Kernel/Browser.js#L157
+            .and_then(|href| {
+                if href.is_empty() || href.starts_with('/') {
+                    Some(href)
+                } else {
+                    None
+                }
+            })
             .map(|href| {
                 event.prevent_default(); // Prevent page refresh
-                // Route internally based on href's value
-                let url = push_route(Url::from(href));
-                update(routes(url));
+                // @TODO should be empty href ignored?
+                if !href.is_empty() {
+                    // Route internally based on href's value
+                    let url = push_route(Url::from(href));
+                    update(routes(url));
+                }
             });
     }) as Box<FnMut(web_sys::Event) + 'static>);
 
