@@ -124,10 +124,12 @@ fn send_message() -> impl Future<Item = Msg, Error = Msg> {
 
 fn view(model: &Model) -> Vec<Node<Msg>> {
     vec![
+        md!["# Repo info"].remove(0),
         div![format!(
-            "Repo info: Name: {}, SHA: {}",
+            "Name: {}, SHA: {}",
             model.branch.name, model.branch.commit.sha
         )],
+        raw!["<hr>"].remove(0),
         button![
             simple_ev(Ev::Click, Msg::SendMessage),
             "Send an urgent message (see console log)"
