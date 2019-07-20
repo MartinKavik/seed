@@ -48,8 +48,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             example_d::update(msg, &mut model.example_d, &mut orders.proxy(Msg::ExampleD));
         }
         Msg::ExampleE(msg) => {
-            *orders = call_update(example_e::update, msg, &mut model.example_e)
-                .map_message(Msg::ExampleE);
+            example_e::update(msg, &mut model.example_e, &mut orders.proxy(Msg::ExampleE));
         }
     }
 }

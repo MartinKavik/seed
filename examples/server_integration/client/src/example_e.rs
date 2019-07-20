@@ -81,7 +81,7 @@ pub enum Msg {
     ServerResponded(fetch::ResponseDataResult<String>),
 }
 
-pub fn update(msg: Msg, model: &mut Model, orders: &mut Orders<Msg>) {
+pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
         Msg::TitleChanged(title) => model.form_mut().title = title,
         Msg::DescriptionChanged(description) => model.form_mut().description = description,
