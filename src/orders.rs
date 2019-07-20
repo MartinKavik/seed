@@ -55,10 +55,10 @@ pub trait Orders<Ms: 'static, GMs = ()> {
     where
         C: Future<Item = Ms, Error = Ms> + 'static;
 
-    /// Similar to `send_msg`, but calls function `g_msg_handler` with the given global message.
+    /// Similar to `send_msg`, but calls function `sink` with the given global message.
     fn send_g_msg(&mut self, g_msg: GMs) -> &mut Self;
 
-    /// Similar to `perform_cmd`, but result is send to function `g_msg_handler`.
+    /// Similar to `perform_cmd`, but result is send to function `sink`.
     fn perform_g_cmd<C>(&mut self, g_cmd: C) -> &mut Self
     where
         C: Future<Item = GMs, Error = GMs> + 'static;

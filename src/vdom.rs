@@ -68,7 +68,7 @@ pub enum ShouldRender {
 type InitFn<Ms, Mdl, ElC, GMs> =
     Box<FnOnce(routing::Url, &mut OrdersContainer<Ms, Mdl, ElC, GMs>) -> Mdl>;
 type UpdateFn<Ms, Mdl, ElC, GMs> = fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, ElC, GMs>);
-type GMsgHandlerFn<Ms, Mdl, ElC, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, ElC, GMs>);
+type SinkFn<Ms, Mdl, ElC, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, ElC, GMs>);
 type ViewFn<Mdl, ElC> = fn(&Mdl) -> ElC;
 type RoutesFn<Ms> = fn(routing::Url) -> Ms;
 type WindowEvents<Ms, Mdl> = fn(&Mdl) -> Vec<events::Listener<Ms>>;
@@ -123,7 +123,7 @@ where
     document: web_sys::Document,
     mount_point: web_sys::Element,
     pub update: UpdateFn<Ms, Mdl, ElC, GMs>,
-    pub g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, ElC, GMs>>,
+    pub sink: Option<SinkFn<Ms, Mdl, ElC, GMs>>,
     view: ViewFn<Mdl, ElC>,
     window_events: Option<WindowEvents<Ms, Mdl>>,
     initial_orders: RefCell<Option<OrdersContainer<Ms, Mdl, ElC, GMs>>>,
@@ -179,7 +179,7 @@ impl MountPoint for web_sys::HtmlElement {
 pub struct AppBuilder<Ms: 'static, Mdl: 'static, ElC: View<Ms>, GMs> {
     init: InitFn<Ms, Mdl, ElC, GMs>,
     update: UpdateFn<Ms, Mdl, ElC, GMs>,
-    g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, ElC, GMs>>,
+    sink: Option<SinkFn<Ms, Mdl, ElC, GMs>>,
     view: ViewFn<Mdl, ElC>,
     mount_point: Option<Element>,
     routes: Option<RoutesFn<Ms>>,
@@ -225,8 +225,8 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, ElC, GM
         self
     }
 
-    pub fn g_msg_handler(mut self, g_msg_handler: GMsgHandlerFn<Ms, Mdl, ElC, GMs>) -> Self {
-        self.g_msg_handler = Some(g_msg_handler);
+    pub fn sink(mut self, sink: SinkFn<Ms, Mdl, ElC, GMs>) -> Self {
+        self.sink = Some(sink);
         self
     }
 
@@ -237,7 +237,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> AppBuilder<Ms, Mdl, ElC, GM
 
         let app = App::new(
             self.update,
-            self.g_msg_handler,
+            self.sink,
             self.view,
             self.mount_point.unwrap(),
             self.routes,
@@ -269,7 +269,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
             init: Box::new(init),
             update,
             view,
-            g_msg_handler: None,
+            sink: None,
             mount_point: None,
             routes: None,
             window_events: None,
@@ -279,7 +279,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
     #[allow(clippy::too_many_arguments)]
     fn new(
         update: UpdateFn<Ms, Mdl, ElC, GMs>,
-        g_msg_handler: Option<GMsgHandlerFn<Ms, Mdl, ElC, GMs>>,
+        sink: Option<SinkFn<Ms, Mdl, ElC, GMs>>,
         view: ViewFn<Mdl, ElC>,
         mount_point: Element,
         routes: Option<RoutesFn<Ms>>,
@@ -293,7 +293,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
                 document,
                 mount_point,
                 update,
-                g_msg_handler,
+                sink,
                 view,
                 window_events,
                 initial_orders: RefCell::new(None),
@@ -401,7 +401,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
         self.process_cmd_and_msg_queue(queue);
     }
 
-    pub fn g_msg_handler(&self, g_msg: GMs) {
+    pub fn sink(&self, g_msg: GMs) {
         let mut queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
         queue.push_front(Effect::GMsg(g_msg));
         self.process_cmd_and_msg_queue(queue);
@@ -452,8 +452,8 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
     fn process_queue_global_message(&self, g_message: GMs) -> VecDeque<Effect<Ms, GMs>> {
         let mut orders = OrdersContainer::new(self.clone());
 
-        if let Some(g_msg_handler) = self.cfg.g_msg_handler {
-            g_msg_handler(
+        if let Some(sink) = self.cfg.sink {
+            sink(
                 g_message,
                 &mut self.data.model.borrow_mut().as_mut().unwrap(),
                 &mut orders,
@@ -493,7 +493,7 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
             spawn_local(g_cmd.then(move |res| {
                 let msg_returned_from_effect = res.unwrap_or_else(|err_msg| err_msg);
                 // recursive call which can blow the call stack
-                s.g_msg_handler(msg_returned_from_effect);
+                s.sink(msg_returned_from_effect);
                 Ok(())
             }))
         });
