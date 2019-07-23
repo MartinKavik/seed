@@ -130,7 +130,7 @@ where
 // ------ HANDLERS -------
 
 fn register_handler_on_open(ws: &web_sys::WebSocket) {
-    let on_open = Closure::new(move |_| {
+    let on_open = Closure::new(move |_: JsValue| {
         log!("WebSocket connection is open now");
         seed::update(Msg::Connected);
     });
@@ -140,7 +140,7 @@ fn register_handler_on_open(ws: &web_sys::WebSocket) {
 }
 
 fn register_handler_on_close(ws: &web_sys::WebSocket) {
-    let on_close = Closure::new(|_| {
+    let on_close = Closure::new(|_: JsValue| {
         log!("WebSocket connection was closed");
     });
 
@@ -162,7 +162,7 @@ fn register_handler_on_message(ws: &web_sys::WebSocket) {
 }
 
 fn register_handler_on_error(ws: &web_sys::WebSocket) {
-    let on_error = Closure::new(|_| {
+    let on_error = Closure::new(|_: JsValue| {
         log!("Error");
     });
 

@@ -1,7 +1,7 @@
 use crate::dom_types::{MessageMapper, View};
 use crate::vdom::{App, Effect, ShouldRender};
 use futures::Future;
-use std::{collections::VecDeque, convert::identity};
+use std::{collections::VecDeque, convert::identity, rc::Rc};
 
 // ------ Orders ------
 
@@ -72,11 +72,9 @@ pub trait Orders<Ms: 'static, GMs = ()> {
     ///
     /// ```rust,no_run
     ///let (app, msg_mapper) = (orders.clone_app(), orders.msg_mapper());
-    ///app.update(msg_mapper.clone_box()(Msg::AMessage));
+    ///app.update(msg_mapper(Msg::AMessage));
     /// ```
-    /// ## Note
-    /// `msg_mapper.clone()` can cause infinite loop.
-    fn msg_mapper(&self) -> Box<dyn FnMsgMapper<Ms, Self::AppMs>>;
+    fn msg_mapper(&self) -> Box<dyn Fn(Ms) -> Self::AppMs>;
 }
 
 // ------ OrdersContainer ------
@@ -105,11 +103,12 @@ impl<Ms: 'static, Mdl, ElC: View<Ms> + 'static, GMs> Orders<Ms, GMs>
     type Mdl = Mdl;
     type ElC = ElC;
 
+    #[allow(clippy::redundant_closure)]
     fn proxy<ChildMs: 'static>(
         &mut self,
         f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
     ) -> OrdersProxy<ChildMs, Ms, Mdl, ElC, GMs> {
-        OrdersProxy::new(self, f)
+        OrdersProxy::new(self, move |child_ms| f.clone()(child_ms))
     }
 
     fn render(&mut self) -> &mut Self {
@@ -160,7 +159,7 @@ impl<Ms: 'static, Mdl, ElC: View<Ms> + 'static, GMs> Orders<Ms, GMs>
         self.app.clone()
     }
 
-    fn msg_mapper(&self) -> Box<dyn FnMsgMapper<Ms, Self::AppMs>> {
+    fn msg_mapper(&self) -> Box<dyn Fn(Ms) -> Self::AppMs> {
         Box::new(identity)
     }
 }
@@ -170,7 +169,7 @@ impl<Ms: 'static, Mdl, ElC: View<Ms> + 'static, GMs> Orders<Ms, GMs>
 #[allow(clippy::module_name_repetitions)]
 pub struct OrdersProxy<'a, Ms, AppMs: 'static, Mdl: 'static, ElC: View<AppMs>, GMs: 'static = ()> {
     orders_container: &'a mut OrdersContainer<AppMs, Mdl, ElC, GMs>,
-    f: Box<dyn FnMsgMapper<Ms, AppMs>>,
+    f: Rc<dyn Fn(Ms) -> AppMs>,
 }
 
 impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs>, GMs>
@@ -178,11 +177,11 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs>, GMs>
 {
     pub fn new(
         orders_container: &'a mut OrdersContainer<AppMs, Mdl, ElC, GMs>,
-        f: impl FnOnce(Ms) -> AppMs + 'static + Clone,
+        f: impl Fn(Ms) -> AppMs + 'static,
     ) -> Self {
         OrdersProxy {
             orders_container,
-            f: Box::new(f),
+            f: Rc::new(f),
         }
     }
 }
@@ -198,10 +197,10 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
         &mut self,
         f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
     ) -> OrdersProxy<ChildMs, AppMs, Mdl, ElC, GMs> {
-        let previous_f = self.f.clone_boxed();
+        let previous_f = self.f.clone();
         OrdersProxy {
             orders_container: self.orders_container,
-            f: Box::new(move |child_ms| previous_f(f(child_ms))),
+            f: Rc::new(move |child_ms| previous_f(f.clone()(child_ms))),
         }
     }
 
@@ -222,7 +221,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
 
     #[allow(clippy::redundant_closure)]
     fn send_msg(&mut self, msg: Ms) -> &mut Self {
-        let f = self.f.clone_boxed();
+        let f = self.f.clone();
         self.orders_container
             .effects
             .push_back(Effect::Msg(msg).map_message(move |ms| f(ms)));
@@ -234,7 +233,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
     where
         C: Future<Item = Ms, Error = Ms> + 'static,
     {
-        let f = self.f.clone_boxed();
+        let f = self.f.clone();
         let effect = Effect::Cmd(Box::new(cmd)).map_message(move |ms| f(ms));
         self.orders_container.effects.push_back(effect);
         self
@@ -259,32 +258,9 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
         self.orders_container.clone_app()
     }
 
-    fn msg_mapper(&self) -> Box<dyn FnMsgMapper<Ms, Self::AppMs>> {
-        let f = self.f.clone_boxed();
-        #[allow(clippy::redundant_closure)]
+    #[allow(clippy::redundant_closure)]
+    fn msg_mapper(&self) -> Box<dyn Fn(Ms) -> Self::AppMs> {
+        let f = self.f.clone();
         Box::new(move |ms| f(ms))
-    }
-}
-
-// ------ MsgMapper ------
-
-/// `FnMsgMapper` is alternative to `FnOnce(U) -> V`.
-/// It allows you to clone it while it's boxed.
-pub trait FnMsgMapper<U, V>: FnOnce(U) -> V {
-    fn clone_boxed(&self) -> Box<dyn FnMsgMapper<U, V>>;
-}
-
-impl<T, U, V> FnMsgMapper<U, V> for T
-where
-    T: 'static + Clone + FnOnce(U) -> V,
-{
-    fn clone_boxed(&self) -> Box<dyn FnMsgMapper<U, V>> {
-        Box::new(self.clone())
-    }
-}
-
-impl<U: 'static, V: 'static> Clone for Box<dyn FnMsgMapper<U, V>> {
-    fn clone(&self) -> Self {
-        self.clone_boxed()
     }
 }

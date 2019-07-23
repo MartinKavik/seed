@@ -72,7 +72,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             let (app, msg_mapper) = (orders.clone_app(), orders.msg_mapper());
 
             let cb = Closure::new(move |time| {
-                app.update(msg_mapper.clone_boxed()(Msg::OnAnimationFrame(time)));
+                app.update(msg_mapper(Msg::OnAnimationFrame(time)));
             });
 
             model.request_animation_frame_handle = Some(request_animation_frame(cb));

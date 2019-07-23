@@ -16,7 +16,9 @@ use crate::{
     dom_types::{self, El, MessageMapper, Namespace, Node, View},
     events, next_tick,
     orders::OrdersContainer,
-    patch, routing, util::{self, ClosureNew}, websys_bridge,
+    patch, routing,
+    util::{self, ClosureNew},
+    websys_bridge,
 };
 
 pub enum Effect<Ms, GMs> {

@@ -1,7 +1,10 @@
 //! This module contains code related to event handling; ie things that update the dom, related to
 //! `web_sys::Event`
 
-use crate::{dom_types::MessageMapper, util::{self, ClosureNew}};
+use crate::{
+    dom_types::MessageMapper,
+    util::{self, ClosureNew},
+};
 
 use enclose::enclose;
 use serde::de::DeserializeOwned;
