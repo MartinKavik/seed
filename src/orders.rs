@@ -198,7 +198,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
         &mut self,
         f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
     ) -> OrdersProxy<ChildMs, AppMs, Mdl, ElC, GMs> {
-        let previous_f = self.f.clone();
+        let previous_f = self.f.clone_boxed();
         OrdersProxy {
             orders_container: self.orders_container,
             f: Box::new(move |child_ms| previous_f(f(child_ms))),
@@ -222,7 +222,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
 
     #[allow(clippy::redundant_closure)]
     fn send_msg(&mut self, msg: Ms) -> &mut Self {
-        let f = self.f.clone();
+        let f = self.f.clone_boxed();
         self.orders_container
             .effects
             .push_back(Effect::Msg(msg).map_message(move |ms| f(ms)));
@@ -234,7 +234,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
     where
         C: Future<Item = Ms, Error = Ms> + 'static,
     {
-        let f = self.f.clone();
+        let f = self.f.clone_boxed();
         let effect = Effect::Cmd(Box::new(cmd)).map_message(move |ms| f(ms));
         self.orders_container.effects.push_back(effect);
         self
@@ -260,7 +260,7 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
     }
 
     fn msg_mapper(&self) -> Box<dyn FnMsgMapper<Ms, Self::AppMs>> {
-        let f = self.f.clone();
+        let f = self.f.clone_boxed();
         #[allow(clippy::redundant_closure)]
         Box::new(move |ms| f(ms))
     }

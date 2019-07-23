@@ -1,7 +1,7 @@
 //! This module contains code related to event handling; ie things that update the dom, related to
 //! `web_sys::Event`
 
-use crate::{dom_types::MessageMapper, util};
+use crate::{dom_types::MessageMapper, util::{self, ClosureNew}};
 
 use enclose::enclose;
 use serde::de::DeserializeOwned;
@@ -121,7 +121,7 @@ make_events! {
     TriggerUpdate => "triggerupdate"
 }
 
-type EventHandler<Ms> = Box<FnMut(web_sys::Event) -> Ms>;
+type EventHandler<Ms> = Box<dyn FnMut(web_sys::Event) -> Ms>;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Category {
@@ -140,7 +140,7 @@ pub struct Listener<Ms> {
     // Handler describes how to handle the event, and is used to generate the closure.
     pub handler: Option<EventHandler<Ms>>,
     // We store closure here so we can detach it later.
-    pub closure: Option<Closure<FnMut(web_sys::Event)>>,
+    pub closure: Option<Closure<dyn FnMut(web_sys::Event)>>,
     // Control listeners prevent input on controlled input elements, and
     // are not assoicated with a message.
     pub control_val: Option<String>,
@@ -222,10 +222,10 @@ impl<Ms> Listener<Ms> {
     {
         let mut handler = self.handler.take().expect("Can't find old handler");
         // This is the closure ran when a DOM element has an user defined callback
-        let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
+        let closure = Closure::new(move |event: web_sys::Event| {
             let msg = handler(event);
             mailbox.send(msg);
-        }) as Box<FnMut(web_sys::Event) + 'static>);
+        });
 
         (el_ws.as_ref() as &web_sys::EventTarget)
             .add_event_listener_with_callback(

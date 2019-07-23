@@ -214,7 +214,7 @@ pub fn push_route<U: Into<Url>>(url: U) -> Url {
 /// Add a listener that handles routing for navigation events like forward and back.
 pub fn setup_popstate_listener<Ms>(
     update: impl Fn(Ms) + 'static,
-    update_ps_listener: impl Fn(Closure<FnMut(web_sys::Event)>) + 'static,
+    update_ps_listener: impl Fn(Closure<dyn FnMut(web_sys::Event)>) + 'static,
     routes: fn(Url) -> Ms,
 ) where
     Ms: 'static,
@@ -251,7 +251,7 @@ pub fn setup_link_listener<Ms>(update: impl Fn(Ms) + 'static, routes: fn(Url) ->
 where
     Ms: 'static,
 {
-    let closure = Closure::wrap(Box::new(move |event: web_sys::Event| {
+    let closure = Closure::new(move |event: web_sys::Event| {
         event.target()
             .and_then(|et| et.dyn_into::<web_sys::Element>().ok())
             .and_then(|el| el.closest("[href]").ok())
@@ -282,7 +282,7 @@ where
                     update(routes(url));
                 }
             });
-    }) as Box<FnMut(web_sys::Event) + 'static>);
+    });
 
     (util::document().as_ref() as &web_sys::EventTarget)
         .add_event_listener_with_callback("click", closure.as_ref().unchecked_ref())

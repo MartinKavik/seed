@@ -16,7 +16,7 @@ use crate::{
     dom_types::{self, El, MessageMapper, Namespace, Node, View},
     events, next_tick,
     orders::OrdersContainer,
-    patch, routing, util, websys_bridge,
+    patch, routing, util::{self, ClosureNew}, websys_bridge,
 };
 
 pub enum Effect<Ms, GMs> {
@@ -52,16 +52,16 @@ pub enum ShouldRender {
 }
 
 type InitFn<Ms, Mdl, ElC, GMs> =
-    Box<FnOnce(routing::Url, &mut OrdersContainer<Ms, Mdl, ElC, GMs>) -> Mdl>;
+    Box<dyn FnOnce(routing::Url, &mut OrdersContainer<Ms, Mdl, ElC, GMs>) -> Mdl>;
 type UpdateFn<Ms, Mdl, ElC, GMs> = fn(Ms, &mut Mdl, &mut OrdersContainer<Ms, Mdl, ElC, GMs>);
 type SinkFn<Ms, Mdl, ElC, GMs> = fn(GMs, &mut Mdl, &mut OrdersContainer<Ms, Mdl, ElC, GMs>);
 type ViewFn<Mdl, ElC> = fn(&Mdl) -> ElC;
 type RoutesFn<Ms> = fn(routing::Url) -> Ms;
 type WindowEvents<Ms, Mdl> = fn(&Mdl) -> Vec<events::Listener<Ms>>;
-type MsgListeners<Ms> = Vec<Box<Fn(&Ms)>>;
+type MsgListeners<Ms> = Vec<Box<dyn Fn(&Ms)>>;
 
 pub struct Mailbox<Message: 'static> {
-    func: Rc<Fn(Message)>,
+    func: Rc<dyn Fn(Message)>,
 }
 
 impl<Ms> Mailbox<Ms> {
@@ -86,7 +86,7 @@ impl<Ms> Clone for Mailbox<Ms> {
 
 // TODO: Examine what needs to be ref cells, rcs etc
 
-type StoredPopstate = RefCell<Option<Closure<FnMut(Event)>>>;
+type StoredPopstate = RefCell<Option<Closure<dyn FnMut(Event)>>>;
 
 /// Used as part of an interior-mutability pattern, ie Rc<RefCell<>>
 pub struct AppData<Ms: 'static, Mdl> {
@@ -491,11 +491,10 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
         let mut scheduled_render_handle = self.data.scheduled_render_handle.borrow_mut();
 
         if scheduled_render_handle.is_none() {
-            let cb = Closure::wrap(Box::new(enclose!((self => s) move |_| {
+            let cb = Closure::new(enclose!((self => s) move |_| {
                 s.rerender_vdom();
                 s.data.scheduled_render_handle.borrow_mut().take();
-            }))
-                as Box<FnMut(util::RequestAnimationFrameTime)>);
+            }));
 
             *scheduled_render_handle = Some(util::request_animation_frame(cb));
         }
@@ -675,9 +674,9 @@ pub trait _DomEl<Ms>: Sized + PartialEq + DomElLifecycle {
 }
 
 pub trait DomElLifecycle {
-    fn did_mount(self) -> Option<Box<FnMut(&Element)>>;
-    fn did_update(self) -> Option<Box<FnMut(&Element)>>;
-    fn will_unmount(self) -> Option<Box<FnMut(&Element)>>;
+    fn did_mount(self) -> Option<Box<dyn FnMut(&Element)>>;
+    fn did_update(self) -> Option<Box<dyn FnMut(&Element)>>;
+    fn will_unmount(self) -> Option<Box<dyn FnMut(&Element)>>;
 }
 
 // todo add back once you sort out how to handle with Node
