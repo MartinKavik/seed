@@ -90,7 +90,10 @@ pub mod prelude {
         // macros are exported in crate root
         // https://github.com/rust-lang-nursery/reference/blob/master/src/macros-by-example.md
         shortcuts::*,
-        util::{request_animation_frame, RequestAnimationFrameHandle, RequestAnimationFrameTime},
+        util::{
+            request_animation_frame, ClosureNew, RequestAnimationFrameHandle,
+            RequestAnimationFrameTime,
+        },
     };
     pub use indexmap::IndexMap; // for attrs and style to work.
     pub use wasm_bindgen::prelude::*;

@@ -1,7 +1,7 @@
 use crate::dom_types::{MessageMapper, View};
 use crate::vdom::{App, Effect, ShouldRender};
 use futures::Future;
-use std::{collections::VecDeque, convert::identity, rc::Rc};
+use std::{collections::VecDeque, convert::identity};
 
 // ------ Orders ------
 
@@ -21,7 +21,7 @@ pub trait Orders<Ms: 'static, GMs = ()> {
     /// ```
     fn proxy<ChildMs: 'static>(
         &mut self,
-        f: impl Fn(ChildMs) -> Ms + 'static,
+        f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
     ) -> OrdersProxy<ChildMs, Self::AppMs, Self::Mdl, Self::ElC, GMs>;
 
     /// Schedule web page rerender after model update. It's the default behaviour.
@@ -72,9 +72,11 @@ pub trait Orders<Ms: 'static, GMs = ()> {
     ///
     /// ```rust,no_run
     ///let (app, msg_mapper) = (orders.clone_app(), orders.msg_mapper());
-    ///app.update(msg_mapper(Msg::AMessage));
+    ///app.update(msg_mapper.clone_box()(Msg::AMessage));
     /// ```
-    fn msg_mapper(&self) -> Box<Fn(Ms) -> Self::AppMs>;
+    /// ## Note
+    /// `msg_mapper.clone()` can cause infinite loop.
+    fn msg_mapper(&self) -> Box<dyn FnMsgMapper<Ms, Self::AppMs>>;
 }
 
 // ------ OrdersContainer ------
@@ -105,7 +107,7 @@ impl<Ms: 'static, Mdl, ElC: View<Ms> + 'static, GMs> Orders<Ms, GMs>
 
     fn proxy<ChildMs: 'static>(
         &mut self,
-        f: impl Fn(ChildMs) -> Ms + 'static,
+        f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
     ) -> OrdersProxy<ChildMs, Ms, Mdl, ElC, GMs> {
         OrdersProxy::new(self, f)
     }
@@ -158,7 +160,7 @@ impl<Ms: 'static, Mdl, ElC: View<Ms> + 'static, GMs> Orders<Ms, GMs>
         self.app.clone()
     }
 
-    fn msg_mapper(&self) -> Box<Fn(Ms) -> Self::AppMs> {
+    fn msg_mapper(&self) -> Box<dyn FnMsgMapper<Ms, Self::AppMs>> {
         Box::new(identity)
     }
 }
@@ -168,7 +170,7 @@ impl<Ms: 'static, Mdl, ElC: View<Ms> + 'static, GMs> Orders<Ms, GMs>
 #[allow(clippy::module_name_repetitions)]
 pub struct OrdersProxy<'a, Ms, AppMs: 'static, Mdl: 'static, ElC: View<AppMs>, GMs: 'static = ()> {
     orders_container: &'a mut OrdersContainer<AppMs, Mdl, ElC, GMs>,
-    f: Rc<Fn(Ms) -> AppMs>,
+    f: Box<dyn FnMsgMapper<Ms, AppMs>>,
 }
 
 impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs>, GMs>
@@ -176,11 +178,11 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs>, GMs>
 {
     pub fn new(
         orders_container: &'a mut OrdersContainer<AppMs, Mdl, ElC, GMs>,
-        f: impl Fn(Ms) -> AppMs + 'static,
+        f: impl FnOnce(Ms) -> AppMs + 'static + Clone,
     ) -> Self {
         OrdersProxy {
             orders_container,
-            f: Rc::new(f),
+            f: Box::new(f),
         }
     }
 }
@@ -194,12 +196,12 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
 
     fn proxy<ChildMs: 'static>(
         &mut self,
-        f: impl Fn(ChildMs) -> Ms + 'static,
+        f: impl FnOnce(ChildMs) -> Ms + 'static + Clone,
     ) -> OrdersProxy<ChildMs, AppMs, Mdl, ElC, GMs> {
         let previous_f = self.f.clone();
         OrdersProxy {
             orders_container: self.orders_container,
-            f: Rc::new(move |child_ms| previous_f(f(child_ms))),
+            f: Box::new(move |child_ms| previous_f(f(child_ms))),
         }
     }
 
@@ -257,9 +259,32 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, ElC: View<AppMs> + 'static, GMs> Orde
         self.orders_container.clone_app()
     }
 
-    fn msg_mapper(&self) -> Box<Fn(Ms) -> Self::AppMs> {
+    fn msg_mapper(&self) -> Box<dyn FnMsgMapper<Ms, Self::AppMs>> {
         let f = self.f.clone();
         #[allow(clippy::redundant_closure)]
         Box::new(move |ms| f(ms))
+    }
+}
+
+// ------ MsgMapper ------
+
+/// `FnMsgMapper` is alternative to `FnOnce(U) -> V`.
+/// It allows you to clone it while it's boxed.
+pub trait FnMsgMapper<U, V>: FnOnce(U) -> V {
+    fn clone_boxed(&self) -> Box<dyn FnMsgMapper<U, V>>;
+}
+
+impl<T, U, V> FnMsgMapper<U, V> for T
+where
+    T: 'static + Clone + FnOnce(U) -> V,
+{
+    fn clone_boxed(&self) -> Box<dyn FnMsgMapper<U, V>> {
+        Box::new(self.clone())
+    }
+}
+
+impl<U: 'static, V: 'static> Clone for Box<dyn FnMsgMapper<U, V>> {
+    fn clone(&self) -> Self {
+        self.clone_boxed()
     }
 }

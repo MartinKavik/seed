@@ -71,9 +71,9 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::NextAnimationStep => {
             let (app, msg_mapper) = (orders.clone_app(), orders.msg_mapper());
 
-            let cb = Closure::wrap(Box::new(move |time| {
-                app.update(msg_mapper(Msg::OnAnimationFrame(time)));
-            }) as Box<FnMut(RequestAnimationFrameTime)>);
+            let cb = Closure::new(move |time| {
+                app.update(msg_mapper.clone_boxed()(Msg::OnAnimationFrame(time)));
+            });
 
             model.request_animation_frame_handle = Some(request_animation_frame(cb));
             orders.skip();
