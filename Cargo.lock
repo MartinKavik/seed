@@ -137,6 +137,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "did_mount"
+version = "0.1.0"
+dependencies = [
+ "seed 0.4.1",
+ "wasm-bindgen 0.2.45 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "digest"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
