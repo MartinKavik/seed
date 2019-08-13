@@ -115,6 +115,8 @@ make_events! {
     Seeked => "seeked", Seeking => "seeking", Stalled => "stalled", Suspend => "suspend", TimeUpdate => "timeupdate",
     VolumeChange => "volumechange",
 
+    Invalid => "invalid",
+
     // todo finish this
 
     Change => "change",

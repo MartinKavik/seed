@@ -1,32 +1,34 @@
-//! A simple, cliché example demonstrating structure and syntax.
-
-#![allow(clippy::non_ascii_literal)]
-
 #[macro_use]
 extern crate seed;
 use seed::prelude::*;
+use web_sys;
+use wasm_bindgen::JsCast;
+
+type ErrorMessage = String;
 
 // Model
 
 #[derive(Default)]
 struct Model {
     text: String,
+    error_message: Option<ErrorMessage>,
 }
 
 // Update
 
-#[derive(Debug, Clone)]
 enum Msg {
     TextChanged(String),
-    InputMounted,
+    TextIsInvalid(ErrorMessage),
+    Submitted,
 }
 
-/// The sole source of updating the model
 fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
     match msg {
         Msg::TextChanged(text) => model.text = text,
-        Msg::InputMounted => {
-            log!("Mounted!");
+        Msg::TextIsInvalid(error_message) => model.error_message = Some(error_message),
+        Msg::Submitted => {
+            model.error_message = None;
+            log!("Submitted!")
         },
     }
 }
@@ -34,15 +36,40 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
 // View
 
 fn view(model: &Model) -> impl View<Msg> {
-    let mut did_mount_data = did_mount(|_| ());
-    did_mount_data.message = Some(Msg::InputMounted);
+    vec![
+        form![
+            raw_ev(Ev::Submit, |event| {
+                event.prevent_default();
+                Msg::Submitted
+            }),
+            input![
+                attrs! {
+                    At::Value => model.text,
+                    At::Required => true.as_at_value()
+                },
+                input_ev(Ev::Input, Msg::TextChanged),
+                raw_ev(Ev::Invalid, |event| {
+                    event.prevent_default();
 
-    div![
-        input![
-            attrs! {At::Value => model.text},
-            input_ev(Ev::Input, Msg::TextChanged),
-            did_mount_data
-        ]
+                    let target = event.target().unwrap();
+                    let html_input_element = target.dyn_ref::<web_sys::HtmlInputElement>().unwrap();
+                    let error_message = html_input_element.validation_message().unwrap();
+
+                    Msg::TextIsInvalid(error_message)
+                }),
+            ],
+            button! [
+                "Submit",
+            ]
+        ],
+        match &model.error_message {
+            Some(error_message) => {
+                div! [
+                    error_message
+                ]
+            },
+            None => empty![]
+        }
     ]
 }
 
