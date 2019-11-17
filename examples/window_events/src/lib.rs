@@ -8,77 +8,38 @@ use seed::{events::Listener, prelude::*};
 
 #[derive(Clone, Default)]
 struct Model {
-    watching: bool,
-    coords: (i32, i32),
-    last_keycode: u32,
-}
-
-impl Model {
-    fn coords_string(&self) -> String {
-        format!("X: {}, Y: {}", self.coords.0, self.coords.1)
-    }
+    counter: i32,
 }
 
 // Update
 
 #[derive(Clone)]
 enum Msg {
-    ToggleWatching,
-    UpdateCoords(web_sys::MouseEvent),
-    KeyPressed(web_sys::KeyboardEvent),
+    Increment,
 }
 
 fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
     match msg {
-        Msg::ToggleWatching => model.watching = !model.watching,
-        Msg::UpdateCoords(ev) => model.coords = (ev.screen_x(), ev.screen_y()),
-        Msg::KeyPressed(ev) => model.last_keycode = ev.key_code(),
+        Msg::Increment => model.counter += 1,
     }
 }
 
 // View
 
-/// This func demonstrates use of custom element tags, and the class! and
-/// id! convenience macros
-fn misc_demo() -> Node<Msg> {
-    let mut custom_el = El::empty(Tag::Custom("mytag".into()));
-    custom_el.add_text(""); // Demo of add_text.
-    let mut attributes = attrs! {};
-    attributes.add_multiple(At::Class, &["a-modicum-of", "hardly-any"]);
-
-    custom![
-        Tag::Custom("superdiv".into()),
-        p![attributes],
-        // class! and id! convenience macros, if no other attributes are required.
-        span![class!["calculus", "chemistry", "literature"]],
-        span![id!("unique-element")],
-        custom_el,
-    ]
-}
-
-fn view(model: &Model) -> Vec<Node<Msg>> {
-    vec![
-        h2![model.coords_string()],
-        h2![format!("Last key pressed: {}", model.last_keycode)],
-        button![
-            simple_ev(Ev::Click, Msg::ToggleWatching),
-            if model.watching {
-                "Stop watching"
-            } else {
-                "Start watching"
-            }
-        ],
-        misc_demo(),
+fn view(model: &Model) -> Node<Msg> {
+    div![
+        model.counter.to_string()
     ]
 }
 
 fn window_events(model: &Model) -> Vec<Listener<Msg>> {
-    let mut result = Vec::new();
-    if model.watching {
-        result.push(mouse_ev(Ev::MouseMove, Msg::UpdateCoords));
-        result.push(keyboard_ev(Ev::KeyDown, Msg::KeyPressed));
-    }
-    result
+    vec![
+        mouse_ev(Ev::Click, |_| Msg::Increment),
+        mouse_ev(Ev::Click, |_| Msg::Increment),
+        mouse_ev(Ev::Click, |_| Msg::Increment),
+        mouse_ev(Ev::Click, |_| Msg::Increment),
+        mouse_ev(Ev::Click, |_| Msg::Increment),
+    ]
 }
 
 #[wasm_bindgen(start)]

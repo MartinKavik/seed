@@ -128,17 +128,6 @@ make_events! {
 
 type EventHandler<Ms> = Box<dyn FnMut(web_sys::Event) -> Ms>;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Category {
-    Custom,
-    Input,
-    Keyboard,
-    Mouse,
-    Pointer,
-    Raw,
-    Simple,
-}
-
 /// Ev-handling for Elements
 pub struct Listener<Ms> {
     pub trigger: Ev,
@@ -150,25 +139,18 @@ pub struct Listener<Ms> {
     // are not assoicated with a message.
     pub control_val: Option<String>,
     pub control_checked: Option<bool>,
-
-    // category and message are used as an aid for comparing Listeners, and therefore diffing.
-    // todo: Neither are fully implemented.
-    category: Option<Category>,
-    // An associated message, if applicable.
-    message: Option<Ms>,
 }
 
 impl<Ms> fmt::Debug for Listener<Ms> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "Listener {{ trigger:{:#?}, handler:{:#?}, closure:{:#?}, control:{:#?}{:#?}, category:{:#?}",
+            "Listener {{ trigger:{:#?}, handler:{:#?}, closure:{:#?}, control:{:#?}{:#?}",
             self.trigger,
             fmt_hook_fn(&self.handler),
             fmt_hook_fn(&self.closure),
             self.control_val,
             self.control_checked,
-            self.category,
         )
     }
 }
@@ -177,8 +159,6 @@ impl<Ms> Listener<Ms> {
     pub fn new(
         trigger: &str,
         handler: Option<EventHandler<Ms>>,
-        category: Option<Category>,
-        message: Option<Ms>,
     ) -> Self {
         Self {
             // We use &str instead of Event here to allow flexibility in helper funcs,
@@ -188,8 +168,6 @@ impl<Ms> Listener<Ms> {
             closure: None,
             control_val: None,
             control_checked: None,
-            category,
-            message,
         }
     }
 
@@ -202,8 +180,6 @@ impl<Ms> Listener<Ms> {
             closure: None,
             control_val: Some(val),
             control_checked: None,
-            category: None,
-            message: None,
         }
     }
 
@@ -215,8 +191,6 @@ impl<Ms> Listener<Ms> {
             closure: None,
             control_val: None,
             control_checked: Some(checked),
-            category: None,
-            message: None,
         }
     }
 
@@ -261,13 +235,12 @@ impl<Ms> Listener<Ms> {
     }
 }
 
+// @@TODO
 impl<Ms> PartialEq for Listener<Ms> {
     fn eq(&self, other: &Self) -> bool {
-        // Todo: This isn't (yet) a comprehensive check, but can catch some differences.
         self.trigger == other.trigger
-            && self.category == other.category
             // We use discriminant so we don't have to force Ms to impl PartialEq.
-            && mem::discriminant(&self.message) == mem::discriminant(&other.message)
+//            && mem::discriminant(&self.message) == mem::discriminant(&other.message)
     }
 }
 
@@ -285,9 +258,6 @@ impl<Ms: 'static, OtherMs: 'static> MessageMapper<Ms, OtherMs> for Listener<Ms> 
             closure: self.closure,
             control_val: self.control_val,
             control_checked: self.control_checked,
-
-            category: self.category,
-            message: self.message.map(f),
         }
     }
 }
@@ -312,8 +282,6 @@ pub fn input_ev<Ms, T: ToString + Copy>(
     Listener::new(
         &trigger.to_string(),
         Some(Box::new(closure)),
-        Some(Category::Input),
-        None,
     )
 }
 
@@ -329,8 +297,6 @@ pub fn keyboard_ev<Ms, T: ToString + Copy>(
     Listener::new(
         &trigger.to_string(),
         Some(Box::new(closure)),
-        Some(Category::Keyboard),
-        None,
     )
 }
 
@@ -345,8 +311,6 @@ pub fn mouse_ev<Ms, T: ToString + Copy>(
     Listener::new(
         &trigger.to_string(),
         Some(Box::new(closure)),
-        Some(Category::Mouse),
-        None,
     )
 }
 
@@ -361,8 +325,6 @@ pub fn pointer_ev<Ms, T: ToString + Copy>(
     Listener::new(
         &trigger.to_string(),
         Some(Box::new(closure)),
-        Some(Category::Pointer),
-        None,
     )
 }
 
@@ -376,8 +338,6 @@ pub fn raw_ev<Ms, T: ToString + Copy>(
     Listener::new(
         &trigger.to_string(),
         Some(Box::new(closure)),
-        Some(Category::Raw),
-        None,
     )
 }
 
@@ -394,8 +354,6 @@ where
     Listener::new(
         &trigger.to_string(),
         Some(Box::new(closure)),
-        Some(Category::Simple),
-        Some(message),
     )
 }
 
@@ -411,8 +369,6 @@ pub fn trigger_update_ev<Ms>(
     Listener::new(
         UPDATE_TRIGGER_EVENT_ID,
         Some(Box::new(closure)),
-        Some(Category::Custom),
-        None,
     )
 }
 

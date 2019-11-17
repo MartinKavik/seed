@@ -1173,7 +1173,6 @@ impl<Ms> Clone for El<Ms> {
 
 impl<Ms> PartialEq for El<Ms> {
     fn eq(&self, other: &Self) -> bool {
-        // todo Again, note that the listeners check only checks triggers.
         // Don't check children.
         self.tag == other.tag
             && self.attrs == other.attrs

@@ -186,8 +186,13 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
 
     pub fn setup_window_listeners(&self) {
         if let Some(window_events) = self.cfg.window_events {
+            // @@TODO
+            if !self.data.window_listeners.borrow().is_empty() {
+                return;
+            }
+
             let mut new_listeners = (window_events)(self.data.model.borrow().as_ref().unwrap());
-            patch::setup_window_listeners(
+            patch::patch_window_listeners(
                 &util::window(),
                 &mut self.data.window_listeners.borrow_mut(),
                 &mut new_listeners,
@@ -452,10 +457,6 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
             .borrow_mut()
             .take()
             .expect("missing main_el_vdom");
-
-        // Detach all old listeners before patching. We'll re-add them as required during patching.
-        // We'll get a runtime panic if any are left un-removed.
-        patch::detach_listeners(&mut old);
 
         patch::patch_els(
             &self.cfg.document,

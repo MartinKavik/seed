@@ -25,23 +25,9 @@ pub(crate) fn attach_listeners<Ms>(el: &mut El<Ms>, mailbox: &Mailbox<Ms>) {
     }
 }
 
-/// Recursively detach event-listeners. Run this before patching.
-pub(crate) fn detach_listeners<Ms>(el: &mut El<Ms>) {
-    if let Some(el_ws) = el.node_ws.as_ref() {
-        for listener in &mut el.listeners {
-            listener.detach(el_ws);
-        }
-    }
-    for child in &mut el.children {
-        if let Node::Element(child_el) = child {
-            detach_listeners(child_el);
-        }
-    }
-}
-
-/// We reattach all listeners, as with normal Els, since we have no
-/// way of diffing them.
-pub(crate) fn setup_window_listeners<Ms>(
+// @@TODO
+/// Patch window listeners
+pub(crate) fn patch_window_listeners<Ms>(
     window: &Window,
     old: &mut Vec<Listener<Ms>>,
     new: &mut Vec<Listener<Ms>>,
@@ -126,11 +112,8 @@ fn patch_el<'a, Ms, Mdl, ElC: View<Ms>, GMs>(
 
         // If the tag's different, we must redraw the element and its children; there's
         // no way to patch one element type into another.
-        // TODO: forcing a rerender for different listeners is inefficient
-        // TODO:, but I'm not sure how to patch them.
 
-        // Assume all listeners have been removed from the old el_ws (if any), and the
-        // old el vdom's elements are still attached.
+        // Assume  theold el vdom's elements are still attached.
 
         // Namespaces can't be patched, since they involve create_element_ns instead of create_element.
         // Something about this element itself is different: patch it.
@@ -168,11 +151,9 @@ fn patch_el<'a, Ms, Mdl, ElC: View<Ms>, GMs>(
 
     let old_el_ws = old.node_ws.take().unwrap();
 
-    // Before running patch, assume we've removed all listeners from the old element.
-    // Perform this attachment after we've verified we can patch this element, ie
+    // Perform this patch after we've verified we can patch this element, ie
     // it has the same tag - otherwise  we'd have to detach after the parent.remove_child step.
-    // Note that unlike the attach_listeners function, this only attaches for the current
-    // element.
+    // @@TODO patch listeners
     for listener in &mut new.listeners {
         listener.attach(&old_el_ws, mailbox.clone());
     }
