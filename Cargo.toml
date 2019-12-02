@@ -101,6 +101,7 @@ features = [
 members = [
     "examples/animation_frame",
     "examples/app_builder",
+    "examples/children",
     "examples/counter",
     "examples/canvas",
     "examples/drop",
