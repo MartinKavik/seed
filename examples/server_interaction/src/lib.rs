@@ -6,7 +6,6 @@
 #[macro_use]
 extern crate seed;
 
-use futures::Future;
 use seed::prelude::*;
 use seed::{fetch, Method, Request};
 use serde::{Deserialize, Serialize};
@@ -94,11 +93,13 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     }
 }
 
-fn fetch_repository_info() -> impl Future<Item = Msg, Error = Msg> {
-    Request::new(REPOSITORY_URL).fetch_json_data(Msg::RepositoryInfoFetched)
+async fn fetch_repository_info() -> Result<Msg, Msg> {
+    Request::new(REPOSITORY_URL)
+        .fetch_json_data(Msg::RepositoryInfoFetched)
+        .await
 }
 
-fn send_message() -> impl Future<Item = Msg, Error = Msg> {
+async fn send_message() -> Result<Msg, Msg> {
     let message = SendMessageRequestBody {
         name: "Mark Watney".into(),
         email: "mark@crypt.kk".into(),
@@ -109,6 +110,7 @@ fn send_message() -> impl Future<Item = Msg, Error = Msg> {
         .method(Method::Post)
         .send_json(&message)
         .fetch_json_data(Msg::MessageSent)
+        .await
 }
 
 fn view(model: &Model) -> Vec<Node<Msg>> {

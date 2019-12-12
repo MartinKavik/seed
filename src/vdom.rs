@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::{
     cell::{Cell, RefCell},
     collections::{vec_deque::VecDeque, HashMap},
@@ -5,13 +6,12 @@ use std::{
     rc::Rc,
 };
 
-use futures::Future;
+use crate::next_tick::NextTick;
+use enclose::enclose;
+use futures::future::LocalFutureObj;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::spawn_local;
 use web_sys::{Element, Event, EventTarget};
-
-use enclose::enclose;
-use next_tick::NextTick;
 
 pub mod alias;
 pub use alias::*;
@@ -25,7 +25,7 @@ pub use builder::{
 
 use crate::{
     dom_types::{self, El, MessageMapper, Namespace, Node, View},
-    events, next_tick,
+    events,
     orders::OrdersContainer,
     patch, routing,
     util::{self, ClosureNew},
@@ -34,9 +34,9 @@ use crate::{
 
 pub enum Effect<Ms, GMs> {
     Msg(Ms),
-    Cmd(Box<dyn Future<Item = Ms, Error = Ms> + 'static>),
+    Cmd(LocalFutureObj<'static, Result<Ms, Ms>>),
     GMsg(GMs),
-    GCmd(Box<dyn Future<Item = GMs, Error = GMs> + 'static>),
+    GCmd(LocalFutureObj<'static, Result<GMs, GMs>>),
 }
 
 impl<Ms, GMs> From<Ms> for Effect<Ms, GMs> {
@@ -50,7 +50,9 @@ impl<Ms: 'static, OtherMs: 'static, GMs> MessageMapper<Ms, OtherMs> for Effect<M
     fn map_msg(self, f: impl FnOnce(Ms) -> OtherMs + 'static + Clone) -> Effect<OtherMs, GMs> {
         match self {
             Effect::Msg(msg) => Effect::Msg(f(msg)),
-            Effect::Cmd(cmd) => Effect::Cmd(Box::new(cmd.map(f.clone()).map_err(f))),
+            Effect::Cmd(cmd) => Effect::Cmd(LocalFutureObj::new(Box::new(async {
+                cmd.await.map(f.clone()).map_err(f)
+            }))),
             Effect::GMsg(g_msg) => Effect::GMsg(g_msg),
             Effect::GCmd(g_cmd) => Effect::GCmd(g_cmd),
         }
@@ -522,32 +524,38 @@ impl<Ms, Mdl, ElC: View<Ms> + 'static, GMs: 'static> App<Ms, Mdl, ElC, GMs> {
         orders.effects
     }
 
-    fn process_queue_cmd(&self, cmd: Box<dyn Future<Item = Ms, Error = Ms>>) {
-        let lazy_schedule_cmd = enclose!((self => s) move |_| {
+    fn process_queue_cmd(&self, cmd: impl Future<Output = Result<Ms, Ms>> + 'static) {
+        let lazy_schedule_cmd = enclose!((self => s) move || {
             // schedule future (cmd) to be executed
-            spawn_local(cmd.then(move |res| {
+            spawn_local(async move {
+                let res = cmd.await;
                 let msg_returned_from_effect = res.unwrap_or_else(|err_msg| err_msg);
                 // recursive call which can blow the call stack
                 s.update(msg_returned_from_effect);
-                Ok(())
-            }))
+            })
         });
         // we need to clear the call stack by NextTick so we don't exceed it's capacity
-        spawn_local(NextTick::new().map(lazy_schedule_cmd));
+        spawn_local(async {
+            NextTick::new().await;
+            lazy_schedule_cmd()
+        });
     }
 
-    fn process_queue_global_cmd(&self, g_cmd: Box<dyn Future<Item = GMs, Error = GMs>>) {
-        let lazy_schedule_cmd = enclose!((self => s) move |_| {
+    fn process_queue_global_cmd(&self, g_cmd: impl Future<Output = Result<GMs, GMs>> + 'static) {
+        let lazy_schedule_cmd = enclose!((self => s) move || {
             // schedule future (g_cmd) to be executed
-            spawn_local(g_cmd.then(move |res| {
+            spawn_local(async move {
+                let res = g_cmd.await;
                 let msg_returned_from_effect = res.unwrap_or_else(|err_msg| err_msg);
                 // recursive call which can blow the call stack
                 s.sink(msg_returned_from_effect);
-                Ok(())
-            }))
+            })
         });
         // we need to clear the call stack by NextTick so we don't exceed it's capacity
-        spawn_local(NextTick::new().map(lazy_schedule_cmd));
+        spawn_local(async {
+            NextTick::new().await;
+            lazy_schedule_cmd()
+        });
     }
 
     fn schedule_render(&self) {
@@ -731,7 +739,7 @@ pub trait DomElLifecycle {
 
 #[cfg(test)]
 pub mod tests {
-    use futures::future;
+    use futures::channel::oneshot;
     use wasm_bindgen::JsCast;
     use wasm_bindgen_test::*;
     use web_sys;
@@ -1371,11 +1379,11 @@ pub mod tests {
 
     /// Tests an update() function that repeatedly sends messages or performs commands.
     #[wasm_bindgen_test(async)]
-    fn update_promises() -> impl Future<Item = (), Error = JsValue> {
+    async fn update_promises() {
         // ARRANGE
 
         // when we call `test_value_sender.send(..)`, future `test_value_receiver` will be marked as resolved
-        let (test_value_sender, test_value_receiver) = futures::oneshot::<Counters>();
+        let (test_value_sender, test_value_receiver) = oneshot::channel::<Counters>();
 
         // big numbers because we want to test if it doesn't blow call-stack
         // Note: Firefox has bigger call stack then Chrome - see http://2ality.com/2014/04/call-stack-size.html
@@ -1393,7 +1401,7 @@ pub mod tests {
         #[derive(Default)]
         struct Model {
             counters: Counters,
-            test_value_sender: Option<futures::sync::oneshot::Sender<Counters>>,
+            test_value_sender: Option<oneshot::Sender<Counters>>,
         }
         #[derive(Clone)]
         enum Msg {
@@ -1416,7 +1424,7 @@ pub mod tests {
                 model.counters.messages_sent += 1;
             }
             if model.counters.commands_scheduled < MESSAGES_TO_SEND {
-                orders.perform_cmd(future::ok(Msg::CommandPerformed));
+                orders.perform_cmd(futures::future::ok(Msg::CommandPerformed));
                 model.counters.commands_scheduled += 1;
             }
 
@@ -1450,11 +1458,10 @@ pub mod tests {
         app.update(Msg::Start);
 
         // ASSERT
-        test_value_receiver
-            .map(|counters| {
-                assert_eq!(counters.messages_received, MESSAGES_TO_SEND);
-                assert_eq!(counters.commands_performed, COMMANDS_TO_PERFORM);
-            })
-            .map_err(|_| panic!("test_value_sender.send probably wasn't called!"))
+        let counters = test_value_receiver
+            .await
+            .expect("test_value_sender.send probably wasn't called!");
+        assert_eq!(counters.messages_received, MESSAGES_TO_SEND);
+        assert_eq!(counters.commands_performed, COMMANDS_TO_PERFORM);
     }
 }

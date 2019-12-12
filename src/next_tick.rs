@@ -1,9 +1,6 @@
-extern crate futures;
-extern crate js_sys;
-extern crate wasm_bindgen;
-extern crate wasm_bindgen_futures;
-
-use futures::{Async, Future, Poll};
+use std::future::Future;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::JsFuture;
 
@@ -27,19 +24,14 @@ impl NextTick {
 }
 
 impl Future for NextTick {
-    type Item = ();
-    type Error = ();
+    type Output = ();
 
-    fn poll(&mut self) -> Poll<(), ()> {
+    fn poll(self: Pin<&mut Self>, ctx: &mut Context<'_>) -> Poll<()> {
         // Polling a `NextTick` just forwards to polling if the inner promise is
         // ready.
-        match self.inner.poll() {
-            Ok(Async::Ready(_)) => Ok(Async::Ready(())),
-            Ok(Async::NotReady) => Ok(Async::NotReady),
-            Err(_) => unreachable!(
-                "We only create NextTick with a resolved inner promise, never \
-                 a rejected one, so we can't get an error here"
-            ),
+        match Pin::new(&mut self.get_mut().inner).poll(ctx) {
+            Poll::Ready(_) => Poll::Ready(()),
+            Poll::Pending => Poll::Pending,
         }
     }
 }

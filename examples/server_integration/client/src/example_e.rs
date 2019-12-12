@@ -1,4 +1,3 @@
-use futures::Future;
 use seed::fetch;
 use seed::prelude::*;
 use std::borrow::Cow;
@@ -7,7 +6,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{
     self,
     console::{log_1, log_2},
-    File,
+    File, FormData,
 };
 
 pub const TITLE: &str = "Example E";
@@ -92,7 +91,7 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::AnswerChanged => toggle(&mut model.form_mut().answer),
         Msg::FormSubmitted(id) => {
             let form = take(model.form_mut());
-            orders.perform_cmd(send_request(&form));
+            orders.perform_cmd(send_request(form.to_form_data().unwrap()));
             *model = Model::WaitingForResponse(form);
             log!(format!("Form {} submitted.", id));
         }
@@ -109,11 +108,12 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     }
 }
 
-fn send_request(form: &Form) -> impl Future<Item = Msg, Error = Msg> {
+async fn send_request(form: FormData) -> Result<Msg, Msg> {
     fetch::Request::new(get_request_url())
         .method(fetch::Method::Post)
-        .body(form.to_form_data().unwrap().into())
+        .body(form.into())
         .fetch_string_data(Msg::ServerResponded)
+        .await
 }
 
 #[allow(clippy::option_map_unit_fn)]

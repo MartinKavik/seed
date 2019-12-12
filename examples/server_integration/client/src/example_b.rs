@@ -1,4 +1,3 @@
-use futures::Future;
 use seed::fetch;
 use seed::prelude::*;
 use serde::Deserialize;
@@ -50,9 +49,10 @@ pub fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     }
 }
 
-fn send_request() -> impl Future<Item = Msg, Error = Msg> {
+async fn send_request() -> Result<Msg, Msg> {
     fetch::Request::new(get_request_url())
         .fetch_json(|fetch_object| Msg::Fetched(fetch_object.result))
+        .await
 }
 
 // View
