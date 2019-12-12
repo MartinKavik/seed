@@ -48,9 +48,9 @@ jobs:
       - name: Run tests - Windows or Ubuntu
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
         run: |
-#           probably a driver problem again
-#           (see error below, we need to wait until wasm-pack > 0.8.1 is released or driver version is updated in NPM package)
-#          cargo make test_h chrome
+          # probably a driver problem again
+          # (see error below, we need to wait until wasm-pack > 0.8.1 is released or driver version is updated in NPM package)
+          # cargo make test_h chrome
           cargo make test_h firefox
 
       # uncomment once fixes from https://webkit.org/blog/9609/release-notes-for-safari-technology-preview-94/
