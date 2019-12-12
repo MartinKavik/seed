@@ -48,7 +48,9 @@ jobs:
       - name: Run tests - Windows or Ubuntu
         if: matrix.os == 'ubuntu-latest' || matrix.os == 'windows-latest'
         run: |
-          cargo make test_h chrome
+#           probably a driver problem again
+#           (see error below, we need to wait until wasm-pack > 0.8.1 is released or driver version is updated in NPM package)
+#          cargo make test_h chrome
           cargo make test_h firefox
 
       # uncomment once fixes from https://webkit.org/blog/9609/release-notes-for-safari-technology-preview-94/
@@ -61,4 +63,14 @@ jobs:
 
       - name: Verify
         run: cargo make verify_for_ci
+
+
+#driver status: signal: 9
+#driver stdout:
+#  Starting ChromeDriver 79.0.3945.36 (3582db32b33893869b8c1339e8f4d9ed1816f143-refs/branch-heads/3945@{#614}) on port 44449
+#  Only local connections are allowed.
+#  Please protect ports used by ChromeDriver and related test frameworks to prevent access by malicious code.
+#
+#Error: non-200 response code: 404
+#  {"value":{"error":"invalid session id","message":"invalid session id","stacktrace":"#0 0x55747a956479 \u003Cunknown>\n"}}
 
