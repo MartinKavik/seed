@@ -1,42 +1,19 @@
-//! A simple, cliché example demonstrating structure and syntax.
-//! Inspired by [Elm example](https://guide.elm-lang.org/architecture/buttons.html).
-
-// Some Clippy linter rules are ignored for the sake of simplicity.
 #![allow(clippy::needless_pass_by_value, clippy::trivially_copy_pass_by_ref)]
+mod state;
 
 use seed::{prelude::*, *};
-
-// ------ ------
-//     Model
-// ------ ------
-
-type Model = i32;
-
-// ------ ------
-//    Update
-// ------ ------
-
-enum Msg {
-    Increment,
-    Decrement,
-}
-
-fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
-    match msg {
-        Msg::Increment => *model += 1,
-        Msg::Decrement => *model -= 1,
-    }
-}
+use state::State;
 
 // ------ ------
 //     View
 // ------ ------
 
-fn view(model: &Model) -> Node<Msg> {
+fn view(_: &()) -> Node<()> {
+    static COUNTER: State<i32> = State::new(0);
     div![
-        button![ev(Ev::Click, |_| Msg::Decrement), "-"],
-        div![model.to_string()],
-        button![ev(Ev::Click, |_| Msg::Increment), "+"],
+        button![ev(Ev::Click, |_| { COUNTER.update(|c| *c -= 1) }), "-"],
+        div![COUNTER.get().to_string()],
+        button![ev(Ev::Click, |_| { COUNTER.update(|c| *c += 1) }), "+"],
     ]
 }
 
@@ -48,3 +25,4 @@ fn view(model: &Model) -> Node<Msg> {
 pub fn render() {
     App::builder(update, view).build_and_start();
 }
+fn update(_: (), _: &mut (), _: &mut impl Orders<()>) {}
