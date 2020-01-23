@@ -10,3 +10,5 @@ crate-type = ["cdylib"]
 [dependencies]
 seed = {path = "../../"}
 wasm-bindgen = "0.2.55"
+enclose = "^1.1.6"
+polymap = "0.3.0"
