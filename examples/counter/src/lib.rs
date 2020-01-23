@@ -1,30 +1,46 @@
-//! A simple, cliché example demonstrating structure and syntax.
-//! Inspired by [Elm example](https://guide.elm-lang.org/architecture/buttons.html).
 
-// Some Clippy linter rules are ignored for the sake of simplicity.
-#![allow(clippy::needless_pass_by_value, clippy::trivially_copy_pass_by_ref)]
+mod counter;
 
 use seed::{prelude::*, *};
+use counter::Counter;
 
 // ------ ------
 //     Model
 // ------ ------
 
-type Model = i32;
+struct Model {
+    counter_a: Counter<Msg>,
+    counter_b: Counter<Msg>,
+    title: String,
+}
+
+// ------ ------
+//  After Mount
+// ------ ------
+
+fn after_mount(_: Url, _: &mut impl Orders<Msg>) -> AfterMount<Model> {
+    AfterMount::new(Model {
+        counter_a: Counter::new(Msg::CounterA),
+        counter_b: Counter::new(Msg::CounterB),
+        title: "My Title".to_owned()
+    })
+}
 
 // ------ ------
 //    Update
 // ------ ------
 
 enum Msg {
-    Increment,
-    Decrement,
+    CounterA(counter::Msg),
+    CounterB(counter::Msg),
+    TitleChanged(String),
 }
 
-fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
-        Msg::Increment => *model += 1,
-        Msg::Decrement => *model -= 1,
+        Msg::CounterA(msg) => model.counter_a.update(msg, orders),
+        Msg::CounterB(msg) => model.counter_b.update(msg, orders),
+        Msg::TitleChanged(title) => model.title = title,
     }
 }
 
@@ -34,9 +50,17 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
 
 fn view(model: &Model) -> Node<Msg> {
     div![
-        button![ev(Ev::Click, |_| Msg::Decrement), "-"],
-        div![model.to_string()],
-        button![ev(Ev::Click, |_| Msg::Increment), "+"],
+        h2![model.title],
+        input![
+            attrs!{
+                At::Value => model.title,
+            },
+            input_ev(Ev::Input, |text| Msg::TitleChanged(text)),
+        ],
+        hr![],
+        model.counter_a.render(),
+        hr![],
+        model.counter_b.render(),
     ]
 }
 
@@ -46,5 +70,5 @@ fn view(model: &Model) -> Node<Msg> {
 
 #[wasm_bindgen(start)]
 pub fn render() {
-    App::builder(update, view).build_and_start();
+    App::builder(update, view).after_mount(after_mount).build_and_start();
 }
