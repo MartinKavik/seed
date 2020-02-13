@@ -1,4 +1,5 @@
 pub mod dom;
+pub mod fetch;
 pub mod next_tick;
 pub mod service;
 pub mod url;
