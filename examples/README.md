@@ -38,6 +38,9 @@ An example using Mathjax, for LaTeX-like math notation.
 How to perform commands and send messages from `update` function.
 And how to use [gloo](https://github.com/rustwasm/gloo) timers.
 
+### [Fetch](fetch)
+How to make HTTP request using Fetch API.
+
 ### [Todo MVC](todomvc)
 Classic TodoMVC example with Local Storage.
 
