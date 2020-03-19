@@ -1,6 +1,7 @@
 # Changelog
 
 [unreleased]
+- All additional markdown [extensions](https://docs.rs/pulldown-cmark/latest/pulldown_cmark/struct.Options.html) enabled and markdown example added.
 - [BREAKING] Changed `perform_cmd` and `fetch` return type to `T` instead of `Result<T, T>`.
 - Added Aria attributes.
 - Added example `tea_component`.
