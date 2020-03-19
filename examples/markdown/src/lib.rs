@@ -28,7 +28,7 @@ fn view(_model: &Model) -> Node<Msg> {
     div![
         md!("## Markdown Example
 
-Intended as a demo of using [El::from_markdown()](https://docs.rs/seed/latest/seed/virtual_dom/node/el/struct.El.html#method.from_markdown) and ```md!()``` for markdown conversion.
+Intended as a demo of using [El::from_markdown()](https://docs.rs/seed/latest/seed/virtual_dom/node/el/struct.El.html#method.from_markdown) and `md!()` for markdown conversion.
 
 ---
 
