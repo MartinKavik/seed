@@ -32,7 +32,7 @@ Intended as a more sophisticated demo of basic functionality.
 How to create a drop-zone.
 
 ### [Markdown](markdown)
-How to render markdown into a Node.
+How to render markdown.
 
 ### [Mathjax](mathjax)
 An example using Mathjax, for LaTeX-like math notation.
