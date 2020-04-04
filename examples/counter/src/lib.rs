@@ -16,6 +16,7 @@ type Model = i32;
 //    Update
 // ------ ------
 
+#[derive(Debug)]
 enum Msg {
     Increment,
     Decrement,
@@ -32,12 +33,17 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
 //     View
 // ------ ------
 
-fn view(model: &Model) -> Node<Msg> {
-    div![
-        button![ev(Ev::Click, |_| Msg::Decrement), "-"],
-        div![model.to_string()],
-        button![ev(Ev::Click, |_| Msg::Increment), "+"],
-    ]
+fn view(model: &Model) -> Vec<Node<Msg>> {
+    let mut nodes: Vec<Node<Msg>> = raw!(
+        r#"<button>-</button><span></span><button>+</button>"#
+    );
+    if let [decrement, counter, increment] = nodes.as_mut_slice() {
+        decrement.add_event_handler(ev(Ev::Click, |_| Msg::Decrement));
+        counter.replace_text(model.to_string());
+        increment.add_event_handler(ev(Ev::Click, |_| Msg::Increment));
+    }
+    log!(nodes);
+    nodes
 }
 
 // ------ ------
