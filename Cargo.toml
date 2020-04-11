@@ -113,6 +113,7 @@ members = [
     "examples/subscribe",
     "examples/tea_component",
     "examples/todomvc",
+    "examples/transactions",
     "examples/update_from_js",
     "examples/user_media",
     "examples/websocket",
