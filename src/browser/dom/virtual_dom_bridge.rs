@@ -221,6 +221,7 @@ pub fn _remove_children(el: &web_sys::Node) {
     }
 }
 
+// @TODO_B: Private or pub(x).
 /// Update the attributes, style, text, and events of an element. Does not
 /// process children, and assumes the tag is the same. Assume we've identfied
 /// the most-correct pairing between new and old.

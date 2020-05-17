@@ -288,6 +288,7 @@ macro_rules! attrs {
      };
 }
 
+// @TODO_B: Deprecate - should be replaced with `C!`.
 /// Convenience macro. Ideal when there are multiple classes, and no other attrs.
 #[macro_export]
 macro_rules! class {
@@ -439,6 +440,7 @@ macro_rules! nodes {
     };
 }
 
+// @TODO_B: Remove.
 //#[macro_export]
 //macro_rules! events {
 //    { $($event_str:expr => $handler:expr);+ } => {
@@ -466,6 +468,7 @@ macro_rules! nodes {
 //}
 //
 
+// @TODO_B: Remove.
 ///// Attempt to apply the correct input type based on its trigger.
 //#[macro_export]
 //macro_rules! ev2 {
@@ -489,6 +492,7 @@ macro_rules! nodes {
 //    };
 //}
 
+// @TODO_B: Remove.
 ///// Attempt to apply the correct input type based on its trigger.
 //#[macro_export]
 //macro_rules! ev2 {

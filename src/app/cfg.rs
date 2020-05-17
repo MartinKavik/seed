@@ -4,6 +4,7 @@ use crate::virtual_dom::IntoNodes;
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+// @TODO_B: Remove.
 #[allow(clippy::module_name_repetitions)]
 pub struct AppInitCfg<Ms, Mdl, INodes, GMs, IAM: ?Sized>
 where
@@ -25,10 +26,13 @@ where
     INodes: IntoNodes<Ms>,
 {
     pub document: web_sys::Document,
+    // @TODO_B: Remove?
     pub mount_point: web_sys::Element,
     pub update: UpdateFn<Ms, Mdl, INodes, GMs>,
+    // @TODO_B: Remove.
     pub sink: Option<SinkFn<Ms, Mdl, INodes, GMs>>,
     pub view: ViewFn<Mdl, INodes>,
+    // @TODO_B: Remove.
     pub window_events: Option<WindowEventsFn<Ms, Mdl>>,
     pub base_path: Rc<Vec<String>>,
 }

@@ -120,6 +120,7 @@ pub const fn empty<Ms>() -> virtual_dom::Node<Ms> {
     virtual_dom::Node::Empty
 }
 
+// @TODO_B: Remove or deprecate - should be replaced by `orders.stream(streams::interval...)`.
 // @TODO remove `set_interval` and `set_timeout`? Alternative from `gloo` should be used instead.
 
 /// A high-level wrapper for `web_sys::window.set_interval_with_callback_and_timeout_and_arguments_0`:
@@ -139,6 +140,7 @@ pub fn set_interval(handler: Box<dyn Fn()>, timeout: i32) {
     callback.forget();
 }
 
+// @TODO_B: Remove or deprecate - should be replaced by `orders.perform_cmd(cmds::timeout...)`.
 /// See [`set_interval`](fn.set_interval.html)
 ///
 ///

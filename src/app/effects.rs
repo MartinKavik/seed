@@ -1,5 +1,6 @@
 use super::{MessageMapper, Notification};
 
+// @TODO_B: Private / pub(x).
 pub enum Effect<Ms, GMs> {
     Msg(Ms),
     GMsg(GMs),
@@ -17,6 +18,7 @@ impl<Ms: 'static, OtherMs: 'static, GMs> MessageMapper<Ms, OtherMs> for Effect<M
     fn map_msg(self, f: impl FnOnce(Ms) -> OtherMs + 'static + Clone) -> Effect<OtherMs, GMs> {
         match self {
             Effect::Msg(msg) => Effect::Msg(f(msg)),
+            // @TODO_B: Remove.
             Effect::GMsg(g_msg) => Effect::GMsg(g_msg),
             Effect::Notification(notification) => Effect::Notification(notification),
         }

@@ -13,6 +13,8 @@ pub use after_mount::{AfterMount, IntoAfterMount, UndefinedAfterMount, UrlHandli
 pub use before_mount::{BeforeMount, MountPoint, MountType, UndefinedMountPoint};
 pub use init::{IntoInit, UndefinedInitAPI, UndefinedIntoInit};
 
+// @TODO_B: Remove.
+
 #[deprecated(
     since = "0.5.0",
     note = "Used for compatibility with old Init API. Use `BeforeAfterInitAPI` together with `BeforeMount` and `AfterMount` instead."

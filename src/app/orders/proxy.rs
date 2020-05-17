@@ -117,16 +117,19 @@ impl<'a, Ms: 'static, AppMs: 'static, Mdl, INodes: IntoNodes<AppMs> + 'static, G
         CmdManager::perform_cmd_with_handle(cmd)
     }
 
+    // @TODO_B: Remove.
     fn send_g_msg(&mut self, g_msg: GMs) -> &mut Self {
         self.orders_container.send_g_msg(g_msg);
         self
     }
 
+    // @TODO_B: Remove.
     fn perform_g_cmd(&mut self, g_cmd: impl Future<Output = GMs> + 'static) -> &mut Self {
         self.orders_container.perform_g_cmd(g_cmd);
         self
     }
 
+    // @TODO_B: Remove.
     fn perform_g_cmd_with_handle(
         &mut self,
         g_cmd: impl Future<Output = GMs> + 'static,

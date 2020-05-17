@@ -4,6 +4,7 @@ use wasm_bindgen_futures::spawn_local;
 
 // ------ StreamManager ------
 
+// @TODO_B: Private or pub(x).
 pub struct StreamManager;
 
 impl StreamManager {

@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 type Subscriptions<Ms> = HashMap<TypeId, IndexMap<Uuid, Subscription<Ms>>>;
 
+// @TODO_B: Private or pub(x).
 #[derive(Default)]
 pub struct SubManager<Ms> {
     subs: Rc<RefCell<Subscriptions<Ms>>>,

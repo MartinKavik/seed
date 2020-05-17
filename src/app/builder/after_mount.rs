@@ -2,6 +2,8 @@ use super::super::OrdersContainer;
 use crate::browser::Url;
 use crate::virtual_dom::IntoNodes;
 
+// @TODO_B: Remove.
+
 #[allow(clippy::module_name_repetitions)]
 pub struct UndefinedAfterMount;
 

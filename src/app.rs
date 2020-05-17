@@ -52,8 +52,10 @@ pub use render_info::RenderInfo;
 pub use stream_manager::{StreamHandle, StreamManager};
 pub use sub_manager::{Notification, SubHandle, SubManager};
 
+// @TODO_B: Remove.
 pub struct UndefinedGMsg;
 
+// @TODO_B: Remove.
 type OptDynInitCfg<Ms, Mdl, INodes, GMs> =
     Option<AppInitCfg<Ms, Mdl, INodes, GMs, dyn IntoAfterMount<Ms, Mdl, INodes, GMs>>>;
 
@@ -64,12 +66,14 @@ pub enum ShouldRender {
     Skip,
 }
 
+// @TODO_B: Remove GMs.
 pub struct App<Ms, Mdl, INodes, GMs = UndefinedGMsg>
 where
     Ms: 'static,
     Mdl: 'static,
     INodes: IntoNodes<Ms>,
 {
+    // @TODO_B: Remove.
     /// Temporary app configuration that is removed after app begins running.
     pub init_cfg: OptDynInitCfg<Ms, Mdl, INodes, GMs>,
     /// App configuration available for the entire application lifetime.
@@ -203,6 +207,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
         app.run()
     }
 
+    // @TODO_B: Remove.
     /// Creates a new `AppBuilder` instance. It's the standard way to create a Seed app.
     ///
     /// Then you can call optional builder methods like `routes` or `sink`.
@@ -274,6 +279,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
         self.process_effect_queue(queue);
     }
 
+    // @TODO_B: Remove.
     pub fn sink(&self, g_msg: GMs) {
         let mut queue: VecDeque<Effect<Ms, GMs>> = VecDeque::new();
         queue.push_front(Effect::GMsg(g_msg));
@@ -287,6 +293,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
                     let mut new_effects = self.process_queue_message(msg);
                     queue.append(&mut new_effects);
                 }
+                // @TODO_B: Remove.
                 Effect::GMsg(g_msg) => {
                     let mut new_effects = self.process_queue_global_message(g_msg);
                     queue.append(&mut new_effects);
@@ -299,6 +306,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
         }
     }
 
+    // @TODO_B: Remove (internal, no longer needed method).
     pub fn patch_window_event_handlers(&self) {
         if let Some(window_events) = self.cfg.window_events {
             let new_event_handlers = (window_events)(self.data.model.borrow().as_ref().unwrap());
@@ -311,6 +319,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
         }
     }
 
+    // @TODO_B: Probably remove or deprecate - I don't know what's the purpose...
     pub fn add_message_listener<F>(&self, listener: F)
     where
         F: Fn(&Ms) + 'static,
@@ -321,6 +330,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
             .push(Box::new(listener));
     }
 
+    // @TODO_B: Private?
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         update: UpdateFn<Ms, Mdl, INodes, GMs>,
@@ -566,6 +576,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
         }))
     }
 
+    // @TODO_B: Remove.
     #[deprecated(
         since = "0.5.0",
         note = "Use `builder` with `AppBuilder::{after_mount, before_mount}` instead."
@@ -578,6 +589,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
         Self::builder(update, view).init(Box::new(init))
     }
 
+    // @TODO_B: Remove / private.
     /// App initialization: Collect its fundamental components, setup, and perform
     /// an initial render.
     #[deprecated(
@@ -674,6 +686,7 @@ impl<Ms, Mdl, INodes: IntoNodes<Ms> + 'static, GMs: 'static> App<Ms, Mdl, INodes
     }
 }
 
+// @TODO_B: Remove.
 #[deprecated(since = "0.5.0", note = "Part of the old Init API.")]
 type InitAppBuilder<Ms, Mdl, INodes, GMs> = AppBuilder<
     Ms,

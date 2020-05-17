@@ -1,10 +1,9 @@
 use futures::future::{abortable, AbortHandle, Future, FutureExt};
 use wasm_bindgen_futures::spawn_local;
 
-// @TODO: Tighten up access - e.g. replace `pub` with `pub(crate)`. Applicable to the entire code base.
-
 // ------ CmdManager ------
 
+// @TODO_B: Private / pub(x).
 pub struct CmdManager;
 
 impl CmdManager {

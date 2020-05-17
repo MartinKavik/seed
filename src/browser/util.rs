@@ -6,9 +6,11 @@
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen::JsCast;
 
+// @TODO_B: Deprecate (see `request_animation_frame`).
 pub type RequestAnimationFrameTime = f64;
 
 #[must_use]
+// @TODO_B: Deprecate (see `request_animation_frame`).
 pub struct RequestAnimationFrameHandle {
     request_id: i32,
     _closure: Closure<dyn FnMut(RequestAnimationFrameTime)>,
@@ -85,6 +87,7 @@ pub fn cookies() -> Option<cookie::CookieJar> {
     }
 }
 
+// @TODO_B: Deprecate - users should use `orders.after_next_render(...)`.
 /// Request the animation frame.
 pub fn request_animation_frame(
     f: Closure<dyn FnMut(RequestAnimationFrameTime)>,

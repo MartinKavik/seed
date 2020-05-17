@@ -119,12 +119,15 @@ pub trait Orders<Ms: 'static, GMs = UndefinedGMsg> {
         cmd: impl Future<Output = MsU> + 'static,
     ) -> CmdHandle;
 
+    // @TODO_B: Remove.
     /// Similar to `send_msg`, but calls function `sink` with the given global message.
     fn send_g_msg(&mut self, g_msg: GMs) -> &mut Self;
 
+    // @TODO_B: Remove.
     /// Similar to `perform_cmd`, but result is send to function `sink`.
     fn perform_g_cmd(&mut self, g_cmd: impl Future<Output = GMs> + 'static) -> &mut Self;
 
+    // @TODO_B: Remove.
     /// Similar to `perform_g_cmd`, but result is send to function `sink`.
     /// - Returns `CmdHandle` that you should save to your `Model`.
     ///   `cmd` is aborted on the handle drop.

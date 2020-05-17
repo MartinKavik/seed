@@ -6,6 +6,7 @@ use crate::app::{subs, Notification};
 use std::rc::Rc;
 use wasm_bindgen::{closure::Closure, JsCast, JsValue};
 
+// @TODO_B: Private / pub(x) or deprecate - users should use `Url::xx`.
 /// Add a new route using history's `push_state` method.
 ///
 /// # References
@@ -22,6 +23,7 @@ pub fn push_route<U: Into<Url>>(url: U) -> Url {
     url
 }
 
+// @TODO_B: Private / pub(x).
 /// Add a listener that handles routing for navigation events like forward and back.
 pub fn setup_popstate_listener<Ms>(
     update: impl Fn(Ms) + 'static,
@@ -63,6 +65,7 @@ pub fn setup_popstate_listener<Ms>(
     updated_listener(closure);
 }
 
+// @TODO_B: Private / pub(x).
 /// Add a listener that handles routing when the url hash is changed.
 pub fn setup_hashchange_listener<Ms>(
     update: impl Fn(Ms) + 'static,
@@ -130,6 +133,7 @@ pub(crate) fn url_request_handler(
     }
 }
 
+// @TODO_B: Private / pub(x).
 /// Set up a listener that intercepts clicks on elements containing an Href attribute,
 /// so we can prevent page refresh for internal links, and route internally.  Run this on load.
 #[allow(clippy::option_map_unit_fn)]

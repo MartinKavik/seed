@@ -2,6 +2,8 @@ use super::{super::OrdersContainer, AfterMount, IntoAfterMount, MountType, UrlHa
 use crate::browser::Url;
 use crate::virtual_dom::IntoNodes;
 
+// @TODO_B: Remove.
+
 pub struct UndefinedInitAPI;
 #[allow(clippy::module_name_repetitions)]
 pub struct UndefinedIntoInit;
