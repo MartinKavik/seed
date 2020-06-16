@@ -106,6 +106,15 @@ where
 }
 
 // ------ ------
+//   Exported
+// ------ ------
+
+#[wasm_bindgen]
+pub fn a_rust_function(a: i32, b: u32, c: f64) {
+    log!(a, b, c);
+}
+
+// ------ ------
 //    Extern
 // ------ ------
 
