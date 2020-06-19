@@ -9,3 +9,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 seed = {path = "../../"}
+serde = "1.0.112"
