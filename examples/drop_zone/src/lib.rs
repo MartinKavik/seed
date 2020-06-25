@@ -1,5 +1,4 @@
 use seed::{prelude::*, *};
-use wasm_bindgen_futures::JsFuture;
 use web_sys::{self, DragEvent, Event, FileList};
 
 // ------ ------
@@ -9,8 +8,8 @@ use web_sys::{self, DragEvent, Event, FileList};
 fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
     Model {
         drop_zone_active: false,
-        drop_zone_content: vec![div!["Drop files here"]],
-        file_texts: Vec::new(),
+        drop_zone_content: vec![div!["Drop images here"]],
+        file_data_urls: Vec::new(),
     }
 }
 
@@ -21,7 +20,7 @@ fn init(_: Url, _: &mut impl Orders<Msg>) -> Model {
 struct Model {
     drop_zone_active: bool,
     drop_zone_content: Vec<Node<Msg>>,
-    file_texts: Vec<String>,
+    file_data_urls: Vec<String>,
 }
 
 // ------ ------
@@ -33,7 +32,7 @@ enum Msg {
     DragOver,
     DragLeave,
     Drop(FileList),
-    FileRead(String),
+    FileDataUrl(String),
 }
 
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
@@ -43,7 +42,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
         Msg::DragLeave => model.drop_zone_active = false,
         Msg::Drop(file_list) => {
             model.drop_zone_active = false;
-            model.file_texts.clear();
+            model.file_data_urls.clear();
 
             // Note: `FileList` doesn't implement `Iterator`.
             let files = (0..file_list.length())
@@ -56,18 +55,12 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             // Read files (async).
             for file in files {
                 orders.perform_cmd(async move {
-                    let text =
-                        // Convert `promise` to `Future`.
-                        JsFuture::from(file.text())
-                            .await
-                            .expect("read file")
-                            .as_string()
-                            .expect("cast file text to String");
-                    Msg::FileRead(text)
+                    let text_result = gloo_file::futures::read_as_data_url(&gloo_file::Blob::from(file)).await;
+                    Msg::FileDataUrl(text_result.expect("file as a data url"))
                 });
             }
         }
-        Msg::FileRead(text) => model.file_texts.push(text + "\n"),
+        Msg::FileDataUrl(data_url) => model.file_data_urls.push(data_url),
     }
 }
 
@@ -140,10 +133,18 @@ fn view(model: &Model) -> Node<Msg> {
                 model.drop_zone_content.clone(),
             ],
         ],
-        if model.file_texts.is_empty() {
-            div!["Uploaded texts appear here"]
+        if model.file_data_urls.is_empty() {
+            div!["Uploaded images appear here"]
         } else {
-            pre![&model.file_texts]
+            div![
+                model.file_data_urls.iter().map(|data_url| {
+                    img![
+                        attrs!{
+                            At::Src => data_url,
+                        }
+                    ]
+                })
+            ]
         }
     ]
 }
