@@ -1,4 +1,5 @@
 use seed::{prelude::*, *};
+use std::rc::Rc;
 
 mod shared;
 
@@ -8,7 +9,7 @@ const WS_URL: &str = "ws://127.0.0.1:9000/ws";
 //     Model
 // ------ ------
 
-struct Model {
+pub struct Model {
     sent_messages_count: usize,
     messages: Vec<String>,
     input_text: String,
@@ -32,10 +33,33 @@ fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
     }
 }
 
+fn decode_message(message: seed::browser::web_socket::WebSocketMessage, msg_sender: Rc<dyn Fn(Msg)>) {
+    seed::log!(message);
+    if message.contains_text() {
+        let msg = message
+            .json::<shared::ServerMessage>()
+            .expect("Failed to decode WebSocket text message");
+        msg_sender(Msg::MessageReceived(msg));
+    } else {
+        spawn_local(async move {
+            let bytes = message
+                .bytes()
+                .await
+                .expect("WebsocketError on binary data");
+            seed::log!(bytes);
+            let msg: shared::ServerMessage = rmp_serde::from_slice(&bytes).unwrap();
+            msg_sender(Msg::BinaryMessageReceived(msg));
+        });
+    }
+}
+
+
 fn create_websocket(orders: &impl Orders<Msg>) -> WebSocket {
+    let msg_sender = orders.msg_sender();
+
     WebSocket::builder(WS_URL, orders)
         .on_open(|| Msg::WebSocketOpened)
-        .on_message(Msg::MessageReceived)
+        .on_message(move |msg| decode_message(msg, msg_sender))
         .on_close(Msg::WebSocketClosed)
         .on_error(|| Msg::WebSocketFailed)
         .build_and_open()
@@ -46,10 +70,10 @@ fn create_websocket(orders: &impl Orders<Msg>) -> WebSocket {
 //    Update
 // ------ ------
 
-enum Msg {
+pub enum Msg {
     WebSocketOpened,
-    MessageReceived(WebSocketMessage),
-    BytesReceived(Vec<u8>),
+    MessageReceived(shared::ServerMessage),
+    BinaryMessageReceived(shared::ServerMessage),
     CloseWebSocket,
     WebSocketClosed(CloseEvent),
     WebSocketFailed,
@@ -67,23 +91,17 @@ fn update(msg: Msg, mut model: &mut Model, orders: &mut impl Orders<Msg>) {
             log!("WebSocket connection is open now");
         }
         Msg::MessageReceived(message) => {
-            log!("Client received a message");
-
-            if message.contains_text() {
+            log!("Client received a text message");
                 model
                     .messages
-                    .push(message.json::<shared::ServerMessage>().unwrap().text);
-            } else {
-                orders.perform_cmd(async move {
-                    let bytes = message.bytes().await;
-                    bytes.map(Msg::BytesReceived).ok()
-                });
-            }
+                    .push(message.text);
+          
         }
-        Msg::BytesReceived(bytes) => {
+        Msg::BinaryMessageReceived(message) => {
             log!("Client received binary message");
-            let msg: shared::ServerMessage = rmp_serde::from_slice(&bytes).unwrap();
-            model.messages.push(msg.text);
+            model
+            .messages
+            .push(message.text);
         }
         Msg::CloseWebSocket => {
             model.web_socket_reconnector = None;

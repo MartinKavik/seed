@@ -132,7 +132,13 @@ pub trait Orders<Ms: 'static> {
     ///let (app, msg_mapper) = (orders.clone_app(), orders.msg_mapper());
     ///app.update(msg_mapper(Msg::AMessage));
     /// ```
-    fn msg_mapper(&self) -> Box<dyn Fn(Ms) -> Self::AppMs>;
+    fn msg_mapper(&self) -> Rc<dyn Fn(Ms) -> Self::AppMs>;
+
+    fn msg_sender(&self) -> Rc<dyn Fn(Ms)> {
+        let (app, msg_mapper) = (self.clone_app(), self.msg_mapper());  
+        let msg_sender = move |msg| app.update(msg_mapper(msg));
+        Rc::new(msg_sender)
+    } 
 
     /// Register the callback that will be executed after the next render.
     ///

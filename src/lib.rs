@@ -104,6 +104,7 @@ pub use crate::{
     virtual_dom::{Attrs, EventHandler, Style},
 };
 pub use console_error_panic_hook;
+pub use wasm_bindgen_futures::{self, spawn_local};
 pub use futures::future::{FutureExt, TryFutureExt};
 use wasm_bindgen::{closure::Closure, JsCast};
 
