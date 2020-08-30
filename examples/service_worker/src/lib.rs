@@ -56,8 +56,7 @@ struct PushSubscription {
 // Register the push manager given a ServiceWorkerRegistration object
 async fn register_push_manager(
     sw_reg: web_sys::ServiceWorkerRegistration,
-    app: App<Msg, Model, Node<Msg>>,
-) -> Result<(), ServiceWorkerError> {
+) -> Result<Msg, ServiceWorkerError> {
     let permission = web_sys::Notification::request_permission()
         .map_err(ServiceWorkerError::RequestPermission)?;
     let permission = wasm_bindgen_futures::JsFuture::from(permission)
@@ -98,9 +97,7 @@ async fn register_push_manager(
     }
 
     let push_subscription: PushSubscription = subscription.into_serde()?;
-    app.update(Msg::SubscriptionRetrieved(push_subscription));
-
-    Ok(())
+    Ok(Msg::SubscriptionRetrieved(push_subscription))
 }
 
 // ------ ------
@@ -117,29 +114,94 @@ fn init(_: Url, _orders: &mut impl Orders<Msg>) -> Model {
 
 #[derive(Default)]
 struct Model {
-    sw_reg: Option<web_sys::ServiceWorkerRegistration>,
+    activated: bool,
+    error: Option<String>,
+    message: Option<String>,
+    notifications_granted: bool,
     push_subscription: Option<PushSubscription>,
+    sw_reg: Option<web_sys::ServiceWorkerRegistration>,
 }
 
 // ------ ------
 //    Update
 // ------ ------
 
-#[derive(Clone)]
+enum ServiceWorkerStatus {
+    Activated,
+    Waiting,
+    StateChange(web_sys::ServiceWorkerState),
+    SubscriptionRetrieved,
+}
+
 enum Msg {
+    FailedToRegisterPushManager(ServiceWorkerError),
+    FailedToRegisterServiceWorker(ServiceWorkerError),
+    RequestNotificationPermission,
+    ServiceWorkerActivated,
     SubscriptionRetrieved(PushSubscription),
     SendMessage,
     SetServiceWorker(web_sys::ServiceWorkerRegistration),
+    StatusUpdate(ServiceWorkerStatus),
 }
 
-fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
+fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
+        Msg::FailedToRegisterPushManager(e) => {
+            log!("Error encountered while registering the Push Manager: ", e);
+            model.error = Some(format!(
+                "Error encountered while registering the Push Manager: {:?}",
+                e
+            ));
+        }
+        Msg::FailedToRegisterServiceWorker(e) => {
+            log!("Failed to register service worker: ", e);
+            model.error = Some(format!("Failed to register service worker: {:?}", e));
+        }
+        Msg::StatusUpdate(status) => match status {
+            ServiceWorkerStatus::Activated => {
+                model.message = Some("Service worker is activated!".into())
+            }
+            ServiceWorkerStatus::Waiting => {
+                model.message = Some(
+                    "Service worker not activated. Registering an event listener and waiting."
+                        .into(),
+                )
+            }
+            ServiceWorkerStatus::StateChange(state) => {
+                model.message = Some(format!("Service worker state changed to: {:?}", state))
+            }
+            ServiceWorkerStatus::SubscriptionRetrieved => {
+                model.message = Some("PushManager Subscription retrieved.".into())
+            }
+        },
+        Msg::RequestNotificationPermission => {
+            if let Some(sw_reg) = model.sw_reg.clone() {
+                orders.perform_cmd(async move {
+                    match register_push_manager(sw_reg.clone()).await {
+                        Ok(msg) => msg,
+                        Err(e) => Msg::FailedToRegisterPushManager(e),
+                    }
+                });
+            }
+        }
+        Msg::ServiceWorkerActivated => {
+            model.activated = true;
+
+            let permission: web_sys::NotificationPermission = web_sys::Notification::permission();
+            if permission == web_sys::NotificationPermission::Granted {
+                model.notifications_granted = true;
+            }
+        }
         Msg::SubscriptionRetrieved(push_subscription) => {
             log!(
-                "Got a push subscription of: {:?}",
+                "Got a push subscription of:",
                 serde_json::to_string_pretty(&push_subscription).unwrap()
             );
+            model.notifications_granted = true;
             model.push_subscription = Some(push_subscription);
+            orders.send_msg(Msg::StatusUpdate(
+                ServiceWorkerStatus::SubscriptionRetrieved,
+            ));
         }
         Msg::SendMessage => {
             web_sys::Notification::new("Hello from seed service worker!")
@@ -157,8 +219,40 @@ fn update(msg: Msg, model: &mut Model, _: &mut impl Orders<Msg>) {
 
 fn view(model: &Model) -> Node<Msg> {
     div![
-        button![ev(Ev::Click, |_| Msg::SendMessage), "Send Message"],
-        h1!["Push Subscription"],
+        h1!["Seed - Service Worker Demo"],
+        p!["When the page first loads, the service worker will cache all assets, but permissions for notifications must be granted."],
+        ol![
+            li![
+                "Click the ",
+                b!["Request Push Subscription"],
+                " button and when prompted, select ",
+                b!["Allow Notifications."],
+            ],
+            li!["The subscription information will be printed to the page and notifications will now be granted."],
+            li![
+                "Click the ",
+                b!["Send Message"],
+                " button to see a browser notification coming from service worker.",
+            ],
+        ],
+        button![ev(Ev::Click, |_| Msg::RequestNotificationPermission), "Request Push Subscription"],
+        button![
+            ev(Ev::Click, |_| Msg::SendMessage),
+            IF!(not(model.notifications_granted) => attrs!{At::Disabled => true}),
+            "Send Message"
+        ],
+        IF!(model.error.is_some() => {
+            p![
+                attrs!{At::Style => "color:red"},
+                model.error.clone().unwrap()
+            ]
+        }),
+        IF!(model.message.is_some() => {
+            p![
+                model.message.clone().unwrap()
+            ]
+        }),
+        h2!["Push Subscription"],
         code![serde_json::to_string_pretty(&model.push_subscription).unwrap()],
         br![],
         br![],
@@ -183,11 +277,11 @@ fn view(model: &Model) -> Node<Msg> {
 pub fn start() {
     let app = App::start("app", init, update, view);
 
-    spawn_local(async {
-        match register_service_worker(app).await {
+    spawn_local(async move {
+        match register_service_worker(app.clone()).await {
             Ok(x) => x,
             Err(e) => {
-                log!("Error registering service worker: {:?}", e);
+                app.update(Msg::FailedToRegisterServiceWorker(e));
             }
         }
     });
@@ -219,27 +313,20 @@ async fn register_service_worker(
 
     if let Some(sw) = sw {
         if sw.state() == web_sys::ServiceWorkerState::Activated {
-            log!("Service worker is activated! About to register with push manager.");
-            register_push_manager(sw_reg.clone(), app.clone()).await?;
+            app.update(Msg::ServiceWorkerActivated);
+            app.update(Msg::StatusUpdate(ServiceWorkerStatus::Activated));
         } else {
-            log!("Service worker not activated. Registering an event listener and waiting.");
+            app.update(Msg::StatusUpdate(ServiceWorkerStatus::Waiting));
             let c = Closure::wrap(Box::new(move |e: web_sys::Event| {
                 let target: web_sys::EventTarget = e.target().expect("Couldn't get target");
                 let sw_js: JsValue = target.into();
                 let sw: web_sys::ServiceWorker = sw_js.into();
                 let state: web_sys::ServiceWorkerState = sw.state();
 
+                app.update(Msg::StatusUpdate(ServiceWorkerStatus::StateChange(state)));
+
                 if state == web_sys::ServiceWorkerState::Activated {
-                    let f = register_push_manager(sw_reg.clone(), app.clone());
-                    spawn_local(async {
-                        match f.await {
-                            Ok(x) => x,
-                            Err(e) => log!(
-                                "Error encountered while registering the Push Manager: {:?}",
-                                e
-                            ),
-                        }
-                    });
+                    app.update(Msg::ServiceWorkerActivated);
                 }
             }) as Box<dyn Fn(web_sys::Event)>);
 

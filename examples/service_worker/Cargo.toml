@@ -24,6 +24,7 @@ features = [
   "EventTarget",
   "Navigator",
   "Notification",
+  "NotificationPermission",
   "ServiceWorker",
   "ServiceWorkerContainer",
   "ServiceWorkerRegistration",

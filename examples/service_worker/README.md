@@ -23,7 +23,7 @@ The example in this crate demonstrates the following features:
 cargo make start
 ```
 
-- Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in your browser. This will cache the assets.
+- Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) in your browser. This will cache the assets.
 - Kill the running cargo process to terminate the local dev server.
 - Refresh the browser and notice that the page loads with all assets.
 - Click on the `Send Message` button. A notification should pop up on the browser.
