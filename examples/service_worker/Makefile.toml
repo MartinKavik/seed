@@ -1,0 +1,31 @@
+extend = "../../Makefile.toml"
+
+[tasks.clean]
+command = "rm"
+args = ["-rf", "pkg", "service-worker.js"]
+
+[tasks.inject_manifest]
+command = "yarn"
+args = ["run", "inject_manifest"]
+
+# ---- BUILD ----
+
+[tasks.build]
+dependencies = ["clean", "default_build", "inject_manifest"]
+
+[tasks.build_release]
+alias = "default_build_release"
+
+# ---- START ----
+
+[tasks.start]
+alias = "default_start"
+dependencies = ["build"]
+
+[tasks.start_release]
+alias = "default_start_release"
+
+# ---- LINT ----
+
+[tasks.clippy]
+alias = "default_clippy"
