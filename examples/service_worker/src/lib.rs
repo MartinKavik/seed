@@ -5,13 +5,15 @@
 //! 3. If the service worker is not yet activated, an even listener will be registered, waiting for the
 //!    state to reach "activated".
 //! 4. When the state reaches "activated", the Notification object will request permission for notifications
-//! 5. If permission is granted, the PushManager will subscribe using an example vapid key
-//! 6. Finally, a PushSubscription will be returned, containing the information that can be passed to a
+//! 5. If permission is granted, the `PushManager` will subscribe using an example vapid key
+//! 6. Finally, a `PushSubscription` will be returned, containing the information that can be passed to a
 //!    notifcation back-end server.
 
-pub mod error;
+#![allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
 
-use crate::error::ServiceWorkerError;
+pub mod errors;
+
+use crate::errors::ServiceWorkerError;
 use seed::{prelude::*, *};
 use wasm_bindgen_futures::spawn_local;
 
@@ -30,10 +32,8 @@ fn url_b64_to_uint_8_array(base_64_string: &str) -> Result<js_sys::Uint8Array, S
     let output_array: js_sys::Uint8Array =
         js_sys::Uint8Array::new_with_length(raw_data.chars().count() as u32);
 
-    let mut pos = 0;
-    for c in raw_data.chars() {
-        output_array.set_index(pos, c as u8);
-        pos = pos + 1;
+    for (pos, c) in raw_data.chars().enumerate() {
+        output_array.set_index(pos as u32, c as u8);
     }
 
     Ok(output_array)
@@ -65,7 +65,7 @@ async fn register_push_manager(
         .map_err(ServiceWorkerError::RequestPermission)?;
     let permission: String = JsValue::into_serde(&permission)?;
 
-    if !permission.eq("granted".into()) {
+    if !permission.eq("granted") {
         return Err(ServiceWorkerError::InvalidPermissions);
     }
 
@@ -243,11 +243,11 @@ async fn register_service_worker(
                 }
             }) as Box<dyn Fn(web_sys::Event)>);
 
-            sw.add_event_listener_with_callback("statechange", &c.as_ref().unchecked_ref())
+            sw.add_event_listener_with_callback("statechange", c.as_ref().unchecked_ref())
                 .map_err(|v| {
                     sw.remove_event_listener_with_callback(
                         "statechange",
-                        &c.as_ref().unchecked_ref(),
+                        c.as_ref().unchecked_ref(),
                     )
                     .expect("Couldn't remove state change event listener.");
                     ServiceWorkerError::StateChangeListener(v)

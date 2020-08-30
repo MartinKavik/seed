@@ -8,7 +8,7 @@ const precaching = workbox.precaching;
 core.skipWaiting();
 core.clientsClaim();
 
-precaching.precacheAndRoute([{"revision":"caf4ec0a00de3a356dc4a9fdd7d1d54f","url":"custom.js"},{"revision":"c5d9009f1ee65b5ecc254670ecd29cab","url":"index.html"},{"revision":"7eca533795667021f9f1c716cb6c287a","url":"package.json"},{"revision":"37a363f559096750e8e8e4906a144d67","url":"pkg/package_bg.d.ts"},{"revision":"b0956963b91185b4c200558d8101a8df","url":"pkg/package_bg.wasm"},{"revision":"584a2a5ad4acc26fce845ad3ab50d850","url":"pkg/package.d.ts"},{"revision":"0bdef4129c2d146a4baf18eb80dcb06c","url":"pkg/package.js"},{"revision":"ffbdde289cf7242c750be75f9dcd43be","url":"pkg/package.json"},{"revision":"caf4ec0a00de3a356dc4a9fdd7d1d54f","url":"pkg/snippets/service_worker-a3e76e61c3718edf/custom.js"},{"revision":"92f90543b0b2592b97668168be25b0a4","url":"workbox-config.js"}]);
+precaching.precacheAndRoute([{"revision":"caf4ec0a00de3a356dc4a9fdd7d1d54f","url":"custom.js"},{"revision":"c5d9009f1ee65b5ecc254670ecd29cab","url":"index.html"},{"revision":"94297a6d400252a3afc46260226069eb","url":"pkg/package_bg.wasm"},{"revision":"29e75c315196d901591f613e2975ccfd","url":"pkg/package.js"},{"revision":"caf4ec0a00de3a356dc4a9fdd7d1d54f","url":"pkg/snippets/service_worker-a3e76e61c3718edf/custom.js"},{"revision":"444516873385f742879d864b9bfec931","url":"workbox-config.js"}]);
 
 self.addEventListener('push', (event) => {
   const title = 'Seed service worker!';
