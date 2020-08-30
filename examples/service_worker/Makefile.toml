@@ -1,21 +1,13 @@
 extend = "../../Makefile.toml"
 
-[tasks.install]
-command = "yarn"
-args = ["install"]
-
 [tasks.clean]
-command = "rm"
-args = ["-rf", "pkg", "service-worker.js"]
-
-[tasks.inject_manifest]
-command = "yarn"
-args = ["run", "inject_manifest"]
+command = "cargo"
+args = ["clean", "--target-dir", "pkg"]
 
 # ---- BUILD ----
 
 [tasks.build]
-dependencies = ["install", "clean", "default_build", "inject_manifest"]
+dependencies = ["clean", "default_build"]
 
 [tasks.build_release]
 alias = "default_build_release"

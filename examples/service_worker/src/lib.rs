@@ -163,7 +163,7 @@ fn view(model: &Model) -> Node<Msg> {
         br![],
         br![],
         img![attrs! {
-            At::Src => "https://media.prod.mdn.mozit.cloud/attachments/2016/02/29/12630/a1182129bede4bea905f11c9ba475c17/important-notes.png"
+            At::Src => "images/important-notes.png"
         },],
         br![],
         a![
