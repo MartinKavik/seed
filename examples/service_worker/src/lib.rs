@@ -24,11 +24,9 @@ fn url_b64_to_uint_8_array(base_64_string: &str) -> Result<js_sys::Uint8Array, S
     let base64 = format!("{}{}", base_64_string, &padding)
         .replace('-', "+")
         .replace('_', "/");
-    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindowError)?;
+    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindow)?;
 
-    let raw_data: String = window
-        .atob(&base64)
-        .map_err(ServiceWorkerError::MapAToBError)?;
+    let raw_data: String = window.atob(&base64).map_err(ServiceWorkerError::MapAToB)?;
     let output_array: js_sys::Uint8Array =
         js_sys::Uint8Array::new_with_length(raw_data.chars().count() as u32);
 
@@ -61,19 +59,19 @@ async fn register_push_manager(
     app: App<Msg, Model, Node<Msg>>,
 ) -> Result<(), ServiceWorkerError> {
     let permission = web_sys::Notification::request_permission()
-        .map_err(ServiceWorkerError::RequestPermissionError)?;
+        .map_err(ServiceWorkerError::RequestPermission)?;
     let permission = wasm_bindgen_futures::JsFuture::from(permission)
         .await
-        .map_err(ServiceWorkerError::RequestPermissionError)?;
+        .map_err(ServiceWorkerError::RequestPermission)?;
     let permission: String = JsValue::into_serde(&permission)?;
 
     if !permission.eq("granted".into()) {
-        return Err(ServiceWorkerError::InvalidPermissionsError);
+        return Err(ServiceWorkerError::InvalidPermissions);
     }
 
     let manager: web_sys::PushManager = sw_reg
         .push_manager()
-        .map_err(ServiceWorkerError::RetrievePushManagerError)?;
+        .map_err(ServiceWorkerError::RetrievePushManager)?;
 
     // Using `web-push generate-vapid-keys` the following is generated for this example:
     // =======================================
@@ -198,13 +196,13 @@ pub fn start() {
 async fn register_service_worker(
     app: App<Msg, Model, Node<Msg>>,
 ) -> Result<(), ServiceWorkerError> {
-    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindowError)?;
+    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindow)?;
     let sw_container = window.navigator().service_worker();
 
     let p = sw_container.register("service-worker.js");
     let reg = wasm_bindgen_futures::JsFuture::from(p)
         .await
-        .map_err(ServiceWorkerError::RegistrationError)?;
+        .map_err(ServiceWorkerError::Registration)?;
 
     let sw_reg: web_sys::ServiceWorkerRegistration = reg.into();
 
@@ -252,19 +250,20 @@ async fn register_service_worker(
                         &c.as_ref().unchecked_ref(),
                     )
                     .expect("Couldn't remove state change event listener.");
-                    ServiceWorkerError::StateChangeListenerError(v)
+                    ServiceWorkerError::StateChangeListener(v)
                 })?;
 
             c.forget();
         }
     } else {
-        return Err(ServiceWorkerError::InvalidStateError);
+        return Err(ServiceWorkerError::InvalidState);
     }
 
     Ok(())
 }
 
 #[wasm_bindgen(module = "/custom.js")]
+#[rustfmt::skip]
 extern "C" {
     async fn subscribe(
         manager: web_sys::PushManager,
