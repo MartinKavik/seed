@@ -1,4 +1,4 @@
-//! A simple example demonstrating how to integrate service worker into seed.
+//! A simple example demonstrating how to integrate service worker into Seed.
 //! This example will cover the following:
 //! 1. Cache resources
 //! 2. Register the service worker
@@ -7,7 +7,7 @@
 //! 4. When the state reaches "activated", the Notification object will request permission for notifications
 //! 5. If permission is granted, the `PushManager` will subscribe using an example vapid key
 //! 6. Finally, a `PushSubscription` will be returned, containing the information that can be passed to a
-//!    notifcation back-end server.
+//!    notification back-end server.
 
 #![allow(clippy::cast_possible_truncation, clippy::needless_pass_by_value)]
 
@@ -15,29 +15,6 @@ pub mod errors;
 
 use crate::errors::ServiceWorkerError;
 use seed::{prelude::*, *};
-use wasm_bindgen_futures::spawn_local;
-
-// url_b64_to_uint_8_array - Takes a base_64_string and converts it to a js_sys::Uint8Array. This will be used
-// to create an encoded key that will be used to subscribe to the push manager.
-fn url_b64_to_uint_8_array(base_64_string: &str) -> Result<js_sys::Uint8Array, ServiceWorkerError> {
-    let padding = std::iter::repeat('=')
-        .take((4 - (base_64_string.len() % 4)) % 4)
-        .collect::<String>();
-    let base64 = format!("{}{}", base_64_string, &padding)
-        .replace('-', "+")
-        .replace('_', "/");
-    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindow)?;
-
-    let raw_data: String = window.atob(&base64).map_err(ServiceWorkerError::MapAToB)?;
-    let output_array: js_sys::Uint8Array =
-        js_sys::Uint8Array::new_with_length(raw_data.chars().count() as u32);
-
-    for (pos, c) in raw_data.chars().enumerate() {
-        output_array.set_index(pos as u32, c as u8);
-    }
-
-    Ok(output_array)
-}
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
 struct PushSubscriptionKeys {
@@ -84,7 +61,6 @@ async fn register_push_manager(
     // =======================================
     let key =
         "BPUHCMCC6_WLIQh-eo0Bmh-w0fG5txRVLfjVfOXRcGVfIcQeaMSPAin0Q-WHgxNENK_2NCJykknLX7fKN9XY-QQ";
-    let encoded_key = url_b64_to_uint_8_array(key)?;
 
     // In order to subscribe to PushNotifications we need to specify two things:
     // 1. The application server key
@@ -93,7 +69,7 @@ async fn register_push_manager(
     // make its way into the 0.2.68 release: https://github.com/rustwasm/wasm-bindgen/commit/49dc58e58f0a8b5921eb7602ab72e82ec51e65e4
     let subscription: JsValue;
     unsafe {
-        subscription = subscribe(manager.clone(), encoded_key).await;
+        subscription = subscribe(manager.clone(), key).await;
     }
 
     let push_subscription: PushSubscription = subscription.into_serde()?;
@@ -204,7 +180,7 @@ fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
             ));
         }
         Msg::SendMessage => {
-            web_sys::Notification::new("Hello from seed service worker!")
+            web_sys::Notification::new("Hello from Seed service worker!")
                 .expect("Couldn't send notification.");
         }
         Msg::SetServiceWorker(sw_reg) => {
@@ -349,11 +325,13 @@ async fn register_service_worker(
     Ok(())
 }
 
-#[wasm_bindgen(module = "/custom.js")]
+#[wasm_bindgen(module = "/src/subscribe.js")]
+// @TODO: Remove the line below once https://github.com/rust-lang/rustfmt/issues/4288 is resolved
+// and a new `rustfmt` version is released.
 #[rustfmt::skip]
 extern "C" {
     async fn subscribe(
         manager: web_sys::PushManager,
-        api_key: js_sys::Uint8Array,
-    ) -> wasm_bindgen::JsValue;
+        api_key: &str,
+    ) -> JsValue;
 }

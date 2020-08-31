@@ -19,10 +19,6 @@ wasm-bindgen-futures = "0.4"
 [dependencies.web-sys]
 version = "0.3.44"
 features = [
-  "ScrollToOptions",
-  "Event",
-  "EventTarget",
-  "Navigator",
   "Notification",
   "NotificationPermission",
   "ServiceWorker",
@@ -34,5 +30,4 @@ features = [
   "PushSubscriptionJson",
   "PushSubscriptionKeys",
   "PushSubscriptionOptionsInit",
-  "RequestMode",
 ]

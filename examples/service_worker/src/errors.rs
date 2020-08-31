@@ -15,7 +15,7 @@ pub enum ServiceWorkerError {
 
 impl std::fmt::Display for ServiceWorkerError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match *self {
+        match self {
             Self::GetWindow => write!(f, "Couldn't retrieve window."),
             Self::InvalidState => write!(
                 f,
@@ -26,7 +26,7 @@ impl std::fmt::Display for ServiceWorkerError {
             Self::Registration(_) => write!(f, "Error registering service worker."),
             Self::RequestPermission(_) => write!(f, "Error requesting notification permissions."),
             Self::RetrievePushManager(_) => write!(f, "Error retrieving push manager."),
-            Self::SerdeJson(ref err) => write!(f, "{}", err),
+            Self::SerdeJson(err) => write!(f, "{}", err),
             Self::StateChangeListener(_) => write!(
                 f,
                 "Error encountered while listening for state changes on the service worker."

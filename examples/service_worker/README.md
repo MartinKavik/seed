@@ -13,7 +13,7 @@ The example in this crate demonstrates the following features:
 1. When the state reaches "activated", the Notification object will request permission for notifications.
 1. If permission is granted, the PushManager will subscribe to the service using an example vapid key.
 1. Finally, a PushSubscription will be returned, containing the information that can be passed to a
-   notifcation back-end server.
+   notification back-end server.
 
 ---
 
