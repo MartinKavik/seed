@@ -8,112 +8,64 @@
 //! 5. If permission is granted, the `PushManager` will subscribe using an example vapid key
 //! 6. Finally, a `PushSubscription` will be returned, containing the information that can be passed to a
 //!    notification back-end server.
-// @TODO: Replace the call to `subscribe` with the web_sys equivalent when wasm_bindgen releases a version >= 0.2.68.
 
 #![allow(clippy::needless_pass_by_value)]
 
-pub mod errors;
-
-use crate::errors::ServiceWorkerError;
+use apply::Apply;
 use futures::future::try_join_all;
 use seed::{prelude::*, *};
-use std::rc::Rc;
 
 // ------ ------
 //     Init
 // ------ ------
 
 fn init(_: Url, orders: &mut impl Orders<Msg>) -> Model {
-    // Get a message sender that can be passed to the register_service_worker function.
-    let msg_sender = orders.msg_sender();
+    let worker_container = window().navigator().service_worker();
+    let ready = worker_container
+        .ready()
+        .map(JsFuture::from)
+        .expect("get `ready`");
 
-    orders.perform_cmd(async move {
-        match register_service_worker(Rc::clone(&msg_sender)).await {
-            Ok(x) => x,
-            Err(e) => msg_sender(Some(Msg::FailedToRegisterServiceWorker(e))),
-        }
-    });
+    orders
+        .perform_cmd(async move {
+            Msg::WorkerActivated({
+                ready
+                    .await
+                    .map(web_sys::ServiceWorkerRegistration::from)
+                    .expect("ServiceWorkerRegistration on ready")
+            })
+        })
+        .perform_cmd(async move {
+            worker_container
+                .register("/service-worker.js")
+                .apply(JsFuture::from)
+                .await
+                .map_err(ServiceWorkerError::WorkerRegistration)
+                .err()
+                .map(Msg::WorkerRegistrationFailed)
+        });
 
-    Model::default()
-}
-
-/// Register the service worker and send status update messages.
-async fn register_service_worker(
-    msg_sender: Rc<dyn Fn(Option<Msg>)>,
-) -> Result<(), ServiceWorkerError> {
-    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindow)?;
-    let sw_container = window.navigator().service_worker();
-
-    let p = sw_container.register("service-worker.js");
-    let reg = wasm_bindgen_futures::JsFuture::from(p)
-        .await
-        .map_err(ServiceWorkerError::Registration)?;
-
-    let sw_reg: web_sys::ServiceWorkerRegistration = reg.into();
-
-    msg_sender(Some(Msg::SetServiceWorker(sw_reg.clone())));
-    let sw: Option<web_sys::ServiceWorker> = if let Some(x) = sw_reg.installing() {
-        Some(x)
-    } else if let Some(x) = sw_reg.waiting() {
-        Some(x)
-    } else if let Some(x) = sw_reg.active() {
-        Some(x)
-    } else {
-        None
-    };
-
-    if let Some(sw) = sw {
-        if sw.state() == web_sys::ServiceWorkerState::Activated {
-            msg_sender(Some(Msg::ServiceWorkerActivated));
-            msg_sender(Some(Msg::StatusUpdate(ServiceWorkerStatus::Activated)));
-        } else {
-            msg_sender(Some(Msg::StatusUpdate(ServiceWorkerStatus::Waiting)));
-            let c = Closure::wrap(Box::new(move |e: web_sys::Event| {
-                let target: web_sys::EventTarget = e.target().expect("Couldn't get target");
-                let sw_js: JsValue = target.into();
-                let sw: web_sys::ServiceWorker = sw_js.into();
-                let state: web_sys::ServiceWorkerState = sw.state();
-
-                msg_sender(Some(Msg::StatusUpdate(ServiceWorkerStatus::StateChange(
-                    state,
-                ))));
-
-                if state == web_sys::ServiceWorkerState::Activated {
-                    msg_sender(Some(Msg::ServiceWorkerActivated));
-                }
-            }) as Box<dyn Fn(web_sys::Event)>);
-
-            sw.add_event_listener_with_callback("statechange", c.as_ref().unchecked_ref())
-                .map_err(|v| {
-                    sw.remove_event_listener_with_callback(
-                        "statechange",
-                        c.as_ref().unchecked_ref(),
-                    )
-                    .expect("Couldn't remove state change event listener.");
-                    ServiceWorkerError::StateChangeListener(v)
-                })?;
-
-            c.forget();
-        }
-    } else {
-        return Err(ServiceWorkerError::InvalidState);
+    Model {
+        error: None,
+        message: None,
+        worker_data: None,
     }
-
-    Ok(())
 }
 
 // ------ ------
 //     Model
 // ------ ------
 
-#[derive(Default)]
 struct Model {
-    activated: bool,
     error: Option<String>,
     message: Option<String>,
+    worker_data: Option<WorkerData>,
+}
+
+struct WorkerData {
     notifications_granted: bool,
     push_subscription: Option<PushSubscription>,
-    sw_reg: Option<web_sys::ServiceWorkerRegistration>,
+    registration: web_sys::ServiceWorkerRegistration,
 }
 
 #[serde(rename_all = "camelCase")]
@@ -134,213 +86,232 @@ struct PushSubscriptionKeys {
 //    Update
 // ------ ------
 
-enum ServiceWorkerStatus {
-    Activated,
-    Waiting,
-    StateChange(web_sys::ServiceWorkerState),
-    SubscriptionRetrieved,
-}
-
 enum Msg {
-    CacheCleared,
-    FailedToClearCache(ServiceWorkerError),
-    ClearCache,
-    FailedToRegisterPushManager(ServiceWorkerError),
-    FailedToRegisterServiceWorker(ServiceWorkerError),
-    FailedToUnregisterServiceWorker(ServiceWorkerError),
+    WorkerActivated(web_sys::ServiceWorkerRegistration),
+    SubscriptionReceived(Option<PushSubscription>),
+    WorkerRegistrationFailed(ServiceWorkerError),
+    UnregisterWorker,
+    WorkerUnregistered(Option<ServiceWorkerError>),
     RequestNotificationPermission,
-    ServiceWorkerActivated,
-    SubscriptionRetrieved(PushSubscription),
+    NotificationPermissionRequested(Result<web_sys::NotificationPermission, ServiceWorkerError>),
+    Subscribed(Result<PushSubscription, ServiceWorkerError>),
     SendMessage,
-    SetServiceWorker(web_sys::ServiceWorkerRegistration),
-    StatusUpdate(ServiceWorkerStatus),
-    UnregisterServiceWorker,
-    UnregisteredServiceWorker,
+    ClearCache,
+    CacheCleared(Option<ServiceWorkerError>),
 }
 
+#[derive(Debug)]
+pub enum ServiceWorkerError {
+    DeleteCache(JsValue),
+    InvalidPermissions,
+    WorkerRegistration(JsValue),
+    RequestPermission(JsValue),
+    SerdeJson(serde_json::error::Error),
+    WorkerUnregistration(Option<JsValue>),
+}
+
+#[allow(clippy::too_many_lines, clippy::match_same_arms)]
 fn update(msg: Msg, model: &mut Model, orders: &mut impl Orders<Msg>) {
     match msg {
-        Msg::CacheCleared => {
-            model.message = Some("Cache cleared.".into());
-        }
-        Msg::FailedToClearCache(e) => {
-            model.error = Some(format!("{:?}", e));
-        }
-        Msg::ClearCache => {
-            orders.perform_cmd(async move {
-                match clear_cache().await {
-                    Ok(_) => Msg::CacheCleared,
-                    Err(e) => Msg::FailedToClearCache(e),
-                }
+        Msg::WorkerActivated(worker_registration) => {
+            log!("Worker activated.");
+            model.message = Some("Service worker activated!".to_owned());
+
+            let push_manager = worker_registration
+                .push_manager()
+                .expect("get `PushManager`");
+
+            if let Ok(get_subscription) = push_manager.get_subscription().map(JsFuture::from) {
+                orders.perform_cmd(async move {
+                    Msg::SubscriptionReceived({
+                        get_subscription
+                            .await
+                            .ok()
+                            .and_then(|subscription| subscription.into_serde().ok())
+                    })
+                });
+            };
+
+            model.worker_data = Some(WorkerData {
+                notifications_granted: web_sys::NotificationPermission::Granted
+                    == web_sys::Notification::permission(),
+                push_subscription: None,
+                registration: worker_registration,
             });
         }
-        Msg::FailedToRegisterPushManager(e) => {
-            log!("Error encountered while registering the Push Manager: ", e);
-            model.error = Some(format!(
-                "Error encountered while registering the Push Manager: {:?}",
-                e
-            ));
+        Msg::SubscriptionReceived(subscription) => {
+            let worker_data = match &mut model.worker_data {
+                None => return,
+                Some(worker_data) => worker_data,
+            };
+            worker_data.push_subscription = subscription;
         }
-        Msg::FailedToRegisterServiceWorker(e) => {
-            log!("Failed to register service worker: ", e);
-            model.error = Some(format!("Failed to register service worker: {:?}", e));
+        Msg::WorkerRegistrationFailed(worker_error) => {
+            model.error = Some(log_error(&worker_error));
         }
-        Msg::FailedToUnregisterServiceWorker(e) => {
-            log!("Failed to unregister service worker: ", e);
-            model.error = Some(format!("Failed to unregister service worker: {:?}", e));
-        }
-        Msg::StatusUpdate(status) => match status {
-            ServiceWorkerStatus::Activated => {
-                model.message = Some("Service worker is activated!".into())
-            }
-            ServiceWorkerStatus::Waiting => {
-                model.message = Some(
-                    "Service worker not activated. Registering an event listener and waiting."
-                        .into(),
-                )
-            }
-            ServiceWorkerStatus::StateChange(state) => {
-                model.message = Some(format!("Service worker state changed to: {:?}", state))
-            }
-            ServiceWorkerStatus::SubscriptionRetrieved => {
-                model.message = Some("PushManager Subscription retrieved.".into())
-            }
-        },
-        Msg::RequestNotificationPermission => {
-            if let Some(sw_reg) = model.sw_reg.clone() {
-                orders.perform_cmd(async move {
-                    match register_push_manager(sw_reg.clone()).await {
-                        Ok(msg) => msg,
-                        Err(e) => Msg::FailedToRegisterPushManager(e),
-                    }
-                });
-            }
-        }
-        Msg::ServiceWorkerActivated => {
-            model.activated = true;
+        Msg::UnregisterWorker => {
+            let worker_data = match model.worker_data.take() {
+                None => return,
+                Some(worker_data) => worker_data,
+            };
 
-            let permission: web_sys::NotificationPermission = web_sys::Notification::permission();
-            if permission == web_sys::NotificationPermission::Granted {
-                model.notifications_granted = true;
-            }
+            let unregister = worker_data
+                .registration
+                .unregister()
+                .map(JsFuture::from)
+                .expect("get `unregister`");
+
+            orders.perform_cmd(async move {
+                Msg::WorkerUnregistered(
+                    match unregister
+                        .await
+                        .map(|js_value| js_value.as_bool().expect("`bool` from `JsValue`"))
+                    {
+                        Ok(true) => None,
+                        Ok(false) => Some(ServiceWorkerError::WorkerUnregistration(None)),
+                        Err(error) => Some(ServiceWorkerError::WorkerUnregistration(Some(error))),
+                    },
+                )
+            });
         }
-        Msg::SubscriptionRetrieved(push_subscription) => {
-            log!(
-                "Got a push subscription of:",
-                serde_json::to_string_pretty(&push_subscription).unwrap()
-            );
-            model.notifications_granted = true;
-            model.push_subscription = Some(push_subscription);
-            orders.send_msg(Msg::StatusUpdate(
-                ServiceWorkerStatus::SubscriptionRetrieved,
-            ));
+        Msg::WorkerUnregistered(None) => {
+            model.message = Some("Successfully unregistered the service worker.".to_owned());
+        }
+        Msg::WorkerUnregistered(Some(worker_error)) => {
+            model.error = Some(log_error(&worker_error));
+        }
+        Msg::RequestNotificationPermission => {
+            orders.perform_cmd(async {
+                Msg::NotificationPermissionRequested({
+                    web_sys::Notification::request_permission()
+                        .expect("call `request_permission`")
+                        .apply(JsFuture::from)
+                        .await
+                        .map(|js_value| {
+                            web_sys::NotificationPermission::from_js_value(&js_value)
+                                .expect("`NotificationPermission` from `JsValue`")
+                        })
+                        .map_err(ServiceWorkerError::RequestPermission)
+                })
+            });
+        }
+        Msg::NotificationPermissionRequested(Ok(web_sys::NotificationPermission::Granted)) => {
+            let worker_data = match &mut model.worker_data {
+                None => return,
+                Some(worker_data) => worker_data,
+            };
+
+            worker_data.notifications_granted = true;
+
+            // @TODO What is web-push and how to use it?
+            // @TODO Do we want to include the link below somewhere?
+            // https://medium.com/izettle-engineering/beginners-guide-to-web-push-notifications-using-service-workers-cb3474a17679
+
+            // Using `web-push generate-vapid-keys` the following is generated for this example:
+            // =======================================
+
+            // Public Key:
+            // BPUHCMCC6_WLIQh-eo0Bmh-w0fG5txRVLfjVfOXRcGVfIcQeaMSPAin0Q-WHgxNENK_2NCJykknLX7fKN9XY-QQ
+
+            // Private Key:
+            // F2iuoMyqIQKxCuinBuZKodP-6wnUcrW6tsHfbsxwSUA
+
+            // =======================================
+            let key =
+                "BPUHCMCC6_WLIQh-eo0Bmh-w0fG5txRVLfjVfOXRcGVfIcQeaMSPAin0Q-WHgxNENK_2NCJykknLX7fKN9XY-QQ";
+
+            // In order to subscribe to PushNotifications we need to specify two things:
+            // 1. The application server key
+            // 2. userVisibleOnly MUST be set to true (this used to only apply to chrome but it appears firefox requires it as well).
+            // As of Aug 29, 2020, wasm_bindgen does not currently provide the `userVisibleOnly` property. A PR was submitted that should
+            // make its way into the 0.2.68 release: https://github.com/rustwasm/wasm-bindgen/commit/49dc58e58f0a8b5921eb7602ab72e82ec51e65e4
+            let push_manager = worker_data
+                .registration
+                .push_manager()
+                .expect("get `PushManager`");
+            // @TODO: Replace the call to `subscribe` with the web_sys equivalent when wasm_bindgen releases a version >= 0.2.68.
+            orders.perform_cmd(async move {
+                Msg::Subscribed(
+                    subscribe(&push_manager, key)
+                        .await
+                        .into_serde()
+                        .map_err(ServiceWorkerError::SerdeJson),
+                )
+            });
+        }
+        Msg::NotificationPermissionRequested(Ok(_)) => {
+            let worker_error = ServiceWorkerError::InvalidPermissions;
+            model.error = Some(log_error(&worker_error));
+        }
+        Msg::NotificationPermissionRequested(Err(worker_error)) => {
+            model.error = Some(log_error(&worker_error));
+        }
+        Msg::Subscribed(Ok(push_subscription)) => {
+            let worker_data = match &mut model.worker_data {
+                None => return,
+                Some(worker_data) => worker_data,
+            };
+
+            log!("subscription:", push_subscription);
+            worker_data.push_subscription = Some(push_subscription);
+        }
+        Msg::Subscribed(Err(worker_error)) => {
+            model.error = Some(log_error(&worker_error));
         }
         Msg::SendMessage => {
-            web_sys::Notification::new("Hello from Seed service worker!")
-                .expect("Couldn't send notification.");
+            // @TODO: It doesn't use push - it's only a simple local browser notification.
+            // @TODO: We should send a notification through subscription's endpoint (fetch?).
+            // @TODO: Inspiration
+            //    - https://serviceworke.rs/push-subscription-management_server_doc.html
+            //    - https://medium.com/izettle-engineering/beginners-guide-to-web-push-notifications-using-service-workers-cb3474a17679
+            // @TODO: Once fetch is ready, modify the condition in `view` to disable "Send message" button when the subscription isn't set.
+            web_sys::Notification::new("Hello from Seed!").expect("send notification");
         }
-        Msg::SetServiceWorker(sw_reg) => {
-            model.sw_reg = Some(sw_reg);
-        }
-        Msg::UnregisterServiceWorker => {
-            orders.perform_cmd(async move {
-                match unregister_service_worker().await {
-                    Ok(_) => Msg::UnregisteredServiceWorker,
-                    Err(e) => Msg::FailedToUnregisterServiceWorker(e),
-                }
+        Msg::ClearCache => {
+            orders.perform_cmd(async {
+                Msg::CacheCleared(
+                    async {
+                        // Loop through each of the caches and delete each one.
+                        let cache_storage = window().caches().expect("get `CacheStorage`");
+                        let keys = JsFuture::from(cache_storage.keys())
+                            .await
+                            .expect("get cache keys");
+                        let keys: Vec<String> =
+                            JsValue::into_serde(&keys).map_err(ServiceWorkerError::SerdeJson)?;
+
+                        let futures = keys
+                            .into_iter()
+                            .map(|key| JsFuture::from(cache_storage.delete(&key)));
+
+                        try_join_all(futures)
+                            .await
+                            .map_err(ServiceWorkerError::DeleteCache)
+                    }
+                    .await
+                    .err(),
+                )
             });
         }
-        Msg::UnregisteredServiceWorker => {
-            model.message = Some("Successfully unregistered the service worker.".into());
-            model.activated = false;
+        Msg::CacheCleared(None) => {
+            model.message = Some("Cache cleared.".to_owned());
+        }
+        Msg::CacheCleared(Some(worker_error)) => {
+            model.error = Some(log_error(&worker_error));
         }
     }
 }
 
-/// Loop through each of the caches and delete each one.
-async fn clear_cache() -> Result<(), ServiceWorkerError> {
-    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindow)?;
-    let caches: web_sys::CacheStorage = window.caches().map_err(ServiceWorkerError::GetCaches)?;
-    let keys: JsValue = wasm_bindgen_futures::JsFuture::from(caches.keys())
-        .await
-        .map_err(ServiceWorkerError::GetCacheKeys)?;
-    let cache_names: Vec<String> = JsValue::into_serde(&keys)?;
-
-    let futures = cache_names
-        .into_iter()
-        .map(|name| wasm_bindgen_futures::JsFuture::from(caches.delete(&name)));
-
-    try_join_all(futures)
-        .await
-        .map_err(ServiceWorkerError::GetCacheKeys)?;
-
-    Ok(())
-}
-
-/// Unregister the service worker. This will be called when a user clicks on the corresponding button.
-async fn unregister_service_worker() -> Result<(), ServiceWorkerError> {
-    let window = web_sys::window().ok_or(ServiceWorkerError::GetWindow)?;
-    let sw_container: web_sys::ServiceWorkerContainer = window.navigator().service_worker();
-
-    let registration: JsValue =
-        wasm_bindgen_futures::JsFuture::from(sw_container.get_registration())
-            .await
-            .map_err(ServiceWorkerError::GetServiceWorkerRegistration)?;
-    let registration: web_sys::ServiceWorkerRegistration = registration.into();
-
-    let f = registration
-        .unregister()
-        .map_err(ServiceWorkerError::UnregisterServiceWorker)?;
-
-    wasm_bindgen_futures::JsFuture::from(f)
-        .await
-        .map_err(ServiceWorkerError::UnregisterServiceWorker)?;
-
-    Ok(())
-}
-
-/// Register the push manager given a `ServiceWorkerRegistration` object.
-async fn register_push_manager(
-    sw_reg: web_sys::ServiceWorkerRegistration,
-) -> Result<Msg, ServiceWorkerError> {
-    let permission = web_sys::Notification::request_permission()
-        .map_err(ServiceWorkerError::RequestPermission)?;
-    let permission = wasm_bindgen_futures::JsFuture::from(permission)
-        .await
-        .map_err(ServiceWorkerError::RequestPermission)?;
-    let permission: String = JsValue::into_serde(&permission)?;
-
-    if !permission.eq("granted") {
-        return Err(ServiceWorkerError::InvalidPermissions);
-    }
-
-    let manager: web_sys::PushManager = sw_reg
-        .push_manager()
-        .map_err(ServiceWorkerError::RetrievePushManager)?;
-
-    // Using `web-push generate-vapid-keys` the following is generated for this example:
-    // =======================================
-
-    // Public Key:
-    // BPUHCMCC6_WLIQh-eo0Bmh-w0fG5txRVLfjVfOXRcGVfIcQeaMSPAin0Q-WHgxNENK_2NCJykknLX7fKN9XY-QQ
-
-    // Private Key:
-    // F2iuoMyqIQKxCuinBuZKodP-6wnUcrW6tsHfbsxwSUA
-
-    // =======================================
-    let key =
-        "BPUHCMCC6_WLIQh-eo0Bmh-w0fG5txRVLfjVfOXRcGVfIcQeaMSPAin0Q-WHgxNENK_2NCJykknLX7fKN9XY-QQ";
-
-    // In order to subscribe to PushNotifications we need to specify two things:
-    // 1. The application server key
-    // 2. userVisibleOnly MUST be set to true (this used to only apply to chrome but it appears firefox requires it as well).
-    // As of Aug 29, 2020, wasm_bindgen does not currently provide the `userVisibleOnly` property. A PR was submitted that should
-    // make its way into the 0.2.68 release: https://github.com/rustwasm/wasm-bindgen/commit/49dc58e58f0a8b5921eb7602ab72e82ec51e65e4
-    let subscription: JsValue;
-    subscription = subscribe(&manager, key).await;
-
-    let push_subscription: PushSubscription = subscription.into_serde()?;
-    Ok(Msg::SubscriptionRetrieved(push_subscription))
+fn log_error(worker_error: &ServiceWorkerError) -> String {
+    let message = match worker_error {
+        ServiceWorkerError::DeleteCache(_) => "Failed to delete cache.",
+        ServiceWorkerError::InvalidPermissions => "User has not granted notification permissions.",
+        ServiceWorkerError::WorkerRegistration(_) => "Error registering service worker.",
+        ServiceWorkerError::RequestPermission(_) => "Error requesting notification permissions.",
+        ServiceWorkerError::SerdeJson(_) => "Serde failed.",
+        ServiceWorkerError::WorkerUnregistration(_) => "Failed to unregister service worker.",
+    };
+    error!(message, worker_error);
+    format!("{}: {:?}", message, worker_error)
 }
 
 // ------ ------
@@ -366,48 +337,55 @@ fn view(model: &Model) -> Node<Msg> {
             ],
         ],
         button![
+            attrs!{At::Disabled => model.worker_data.is_none().as_at_value()},
+            "Request Push Subscription",
             ev(Ev::Click, |_| Msg::RequestNotificationPermission),
-            attrs!{At::Disabled => (!model.activated).as_at_value()},
-            "Request Push Subscription"
         ],
         button![
+            attrs!{At::Disabled => {
+                match &model.worker_data {
+                    Some(worker_data) if worker_data.notifications_granted => false,
+                    _ => true,
+                }.as_at_value()
+            }},
+            "Send Message",
             ev(Ev::Click, |_| Msg::SendMessage),
-            attrs!{At::Disabled => (!model.notifications_granted).as_at_value()},
-            "Send Message"
         ],
         button![
+            "Clear Cache",
             ev(Ev::Click, |_| Msg::ClearCache),
-            "Clear Cache"
         ],
         button![
-            ev(Ev::Click, |_| Msg::UnregisterServiceWorker),
-            attrs!{At::Disabled => (!model.activated).as_at_value()},
-            "Unregister Service Worker"
+            attrs!{At::Disabled => model.worker_data.is_none().as_at_value()},
+            "Unregister Service Worker",
+            ev(Ev::Click, |_| Msg::UnregisterWorker),
         ],
-        IF!(model.error.is_some() => {
+        model.error.as_ref().map(|error| {
             p![
-                attrs!{At::Style => "color:red"},
-                model.error.clone().unwrap()
+                style!{St::Color => "red"},
+                error
             ]
         }),
-        IF!(model.message.is_some() => {
+        model.message.as_ref().map(|message| {
             p![
-                model.message.clone().unwrap()
+                message
             ]
         }),
         h2!["Push Subscription"],
-        code![serde_json::to_string_pretty(&model.push_subscription).unwrap()],
+        model.worker_data.as_ref().map(|worker_data| {
+            code![serde_json::to_string_pretty(&worker_data.push_subscription).expect("stringify `push_subscription`")]
+        }),
         br![],
         br![],
         img![attrs! {
-            At::Src => "images/important-notes.png"
+            At::Src => "/public/images/important-notes.png"
         },],
         br![],
         a![
             attrs! {
                 At::Href => "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API/Using_Service_Workers"
             },
-            "- Using Service Workers (Service Worker Api)"
+            "Using Service Workers (Service Worker Api)"
         ]
     ]
 }

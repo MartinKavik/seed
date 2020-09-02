@@ -19,10 +19,10 @@ precaching.precacheAndRoute(
   [
     { "revision": "12345", "url": "index.html" },
     { "revision": "12345", "url": "public/subscribe.js" },
+    { "revision": "12345", "url": "public/images/important-notes.png" },
     { "revision": "12345", "url": "/" },
     { "revision": "12345", "url": "pkg/package_bg.wasm" }, 
     { "revision": "12345", "url": "pkg/package.js" },
-    { "revision": "12345", "url": "images/important-notes.png" }
   ]
 );
 

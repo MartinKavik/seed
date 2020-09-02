@@ -11,11 +11,10 @@ license = "MIT"
 crate-type = ["cdylib"]
 
 [dependencies]
-futures = "0.3"
 seed = {path = "../../"}
 serde = "1.0"
 serde_json = "1.0"
-wasm-bindgen-futures = "0.4"
+apply = "0.3.0"
 
 [dependencies.web-sys]
 version = "0.3.44"
