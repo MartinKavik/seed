@@ -15,7 +15,7 @@
 // to the user. It must be set to `true` or the browser will reject the subscripbtion request. This holds true
 // for both chrome and firefox.
 // ------ ------
-export async function subscribe(manager, api_key) {
+window.subscribe = async (manager, api_key) => {
     let subscription = await manager.subscribe({
         applicationServerKey: api_key,
         userVisibleOnly: true

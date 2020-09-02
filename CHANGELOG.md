@@ -32,6 +32,7 @@
 - Reexported `pub use wasm_bindgen_futures::{self, spawn_local};` in `lib.rs`.
 - Updated example `websocket`.
 - Fixed link handling (#527).
+- Added examples `service_worker`.
 
 ## v0.7.0
 - [BREAKING] Custom elements are now patched in-place (#364). Use `el_key` to force reinitialize an element.

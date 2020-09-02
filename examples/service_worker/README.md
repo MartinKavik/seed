@@ -27,3 +27,8 @@ cargo make start
 - Kill the running cargo process to terminate the local dev server.
 - Refresh the browser and notice that the page loads with all assets.
 - Click on the `Send Message` button. A notification should pop up on the browser.
+- Open Dev Tools and select the `Application` tab.
+- Click on the `Service Workers` item and view the registered service worker.
+- In the web page, click the `Unregister Service Worker` button and notice that the service worker is unregistered.
+- View the `Cache Storage` item in dev tools and take note of the cached items.
+- In the web page, click the `Clear Cache` button and notice the cache is erased in Dev Tools (Firefox is a bit finiky at showing this).
