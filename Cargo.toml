@@ -140,6 +140,7 @@ members = [
     "examples/service_worker",
     "examples/subscribe",
     "examples/tests",
+    "examples/to_case_page",
     "examples/tea_component",
     "examples/todomvc",
     "examples/unsaved_changes",
